@@ -160,7 +160,9 @@ export function applySnapshot(room, player, snap, now) {
   if (firstSync && newCount > 0) {
     pushEvent(room, player, "sync", `${playerName} ist verbunden (${newCount} Pokémon übernommen)`, now);
   }
-  applyFails(room, player, playerName, snap.fails, now, firstSync);
+  // quiet only for the very first snapshot (old failures from before the run started);
+  // a player without any Pokémon yet must still get events
+  applyFails(room, player, playerName, snap.fails, now, !p.lastUpdate);
 
   p.party = (snap.party || []).map((m) => (m.tags && m.tags[0] ? String(m.tags[0].id) : null)).filter(Boolean);
   p.info = {

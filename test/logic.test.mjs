@@ -192,3 +192,12 @@ test("failed wild encounters: first one counts, dupes and later ones do not", ()
   v = buildView(room, 4000);
   assert.equal(v.routes.find((r) => r.name === "Route 1").mon[1], "a6");
 });
+
+test("a failure gets an event even if the player has not caught anything yet", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  applySnapshot(room, "2", snap([], [], "Artur"), 1000);
+  applySnapshot(room, "2", { ...snap([], [], "Artur"),
+    fails: [{ id: "f1", seq: 1, route: "Route 1", result: "geflohen", wild: [{ name: "Zubat", families: ["ZUBAT"] }] }] }, 2000);
+  const v = buildView(room, 2000);
+  assert.ok(v.events.some((e) => e.type === "fail" && e.text.startsWith("✗ Artur hat's verkackt")));
+});
