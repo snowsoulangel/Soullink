@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soul Link Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --card: rgba(18, 20, 32, 0.82);
+    --card-border: rgba(255, 255, 255, 0.12);
+    --text: #f4f5fb;
+    --muted: #aab0c8;
+    --link: #b48cff;
+    --dead: #ff5a6e;
+    --green: #39d98a;
+    --yellow: #ffc94d;
+    --red: #ff5a6e;
+    --scale: 1;
+  }
+  html, body { margin: 0; background: transparent; color: var(--text); font-family: Rubik, "Segoe UI", sans-serif; overflow: hidden; }
+  #root { transform: scale(var(--scale)); transform-origin: top left; padding: 8px; }
+  .row { display: flex; gap: 10px; }
+  .column { display: flex; flex-direction: column; gap: 8px; }
+  .label { font-weight: 800; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px 2px; text-shadow: 0 1px 3px #000; }
+  .team + .team { margin-top: 12px; }
+
+  .card { width: 150px; background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; padding: 8px 9px 9px; box-shadow: 0 4px 14px rgba(0,0,0,.35); position: relative; transition: filter .6s, opacity .6s; }
+  .column .card { width: 270px; display: grid; grid-template-columns: 76px 1fr; column-gap: 8px; }
+  .card.empty { opacity: .35; }
+  .card.dead { filter: grayscale(1) brightness(.75); }
+  .card.just-died { animation: shake .5s 3, flash 1.5s; }
+  @keyframes shake { 25% { transform: translateX(-4px) } 75% { transform: translateX(4px) } }
+  @keyframes flash { 0%,100% { box-shadow: 0 4px 14px rgba(0,0,0,.35) } 30% { box-shadow: 0 0 0 4px var(--dead), 0 0 30px var(--dead) } }
+
+  .sprite { width: 76px; height: 76px; position: relative; margin: 0 auto; }
+  .sprite img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+  .sprite.fusion img.body { width: 82%; height: 82%; left: 0; top: 18%; }
+  .sprite.fusion img.head { width: 62%; height: 62%; left: 40%; top: -4%; filter: drop-shadow(0 0 2px rgba(0,0,0,.9)); }
+  .sprite.small { width: 38px; height: 38px; margin: 0; flex: none; }
+
+  .name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; }
+  .meta { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 4px; }
+  .meta .species { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hpbar { height: 7px; border-radius: 4px; background: rgba(255,255,255,.14); overflow: hidden; margin-top: 4px; }
+  .hpfill { height: 100%; border-radius: 4px; transition: width .8s ease, background-color .8s; }
+  .hp-green .hpfill { background: var(--green); }
+  .hp-yellow .hpfill { background: var(--yellow); }
+  .hp-red .hpfill, .hp-zero .hpfill { background: var(--red); }
+  .hptext { font-size: 11px; color: var(--muted); text-align: right; margin-top: 1px; font-variant-numeric: tabular-nums; }
+  .status { font-size: 10px; font-weight: 800; padding: 0 4px; border-radius: 4px; background: #6b5bd6; margin-left: 4px; vertical-align: 2px; }
+  .skull { position: absolute; top: 6px; right: 8px; font-size: 18px; }
+
+  .partner { display: flex; align-items: center; gap: 6px; margin-top: 7px; padding-top: 6px; border-top: 1px dashed rgba(180,140,255,.45); grid-column: 1 / -1; }
+  .partner .chain { color: var(--link); font-size: 15px; flex: none; }
+  .partner .pinfo { min-width: 0; flex: 1; }
+  .partner .pname { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .partner .hpbar { height: 5px; margin-top: 2px; }
+  .partner.dead .pname { color: var(--dead); text-decoration: line-through; }
+  .partner .warn { font-size: 10px; color: var(--yellow); }
+  .partner.none .pname { color: var(--muted); font-weight: 500; font-style: italic; }
+
+  .deaths { display: inline-flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 10px 18px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .deaths .big { font-size: 40px; font-weight: 800; color: var(--dead); line-height: 1; font-variant-numeric: tabular-nums; }
+  .deaths .lbl { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .deaths .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .deaths.bump { animation: flash 1.5s; }
+
+  .notice { font-size: 14px; color: var(--muted); background: var(--card); padding: 8px 12px; border-radius: 10px; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+  import { params, esc, spriteHtml, hpBar, animateHpBars, monName, speciesLabel, playerName, connect } from "./common.js";
+
+  // URL options:
+  //   room=<id>                 required
+  //   view=team|both|deaths     what to show (default team)
+  //   player=1|2                whose team (default 1)
+  //   layout=row|column         cards next to or below each other
+  //   partner=1|0               show the linked partner under each Pokémon
+  //   label=1|0                 show the player name above the team
+  //   scale=1.0                 size
+  const room = params.get("room");
+  const view = params.get("view") || "team";
+  const player = params.get("player") === "2" ? "2" : "1";
+  const layout = params.get("layout") === "column" ? "column" : "row";
+  const showPartner = params.get("partner") !== "0";
+  const showLabel = params.get("label") === "1" || (view === "both" && params.get("label") !== "0");
+  document.documentElement.style.setProperty("--scale", params.get("scale") || "1");
+
+  const root = document.getElementById("root");
+  const knownDead = new Set();
+  let firstRender = true;
+  let lastDeaths = null;
+
+  if (!room) root.innerHTML = `<div class="notice">Kein Raum angegeben (?room=…)</div>`;
+  else connect(room, render, (s) => s === "missing" && (root.innerHTML = `<div class="notice">Run nicht gefunden</div>`));
+
+  function partnerHtml(v, p, mon) {
+    if (!showPartner) return "";
+    const otherPlayer = p === "1" ? "2" : "1";
+    const ids = [mon.id, ...(mon.fusedWith || [])];
+    const parts = ids.map((id) => {
+      const m = v.mons[p][id];
+      if (!m) return "";
+      if (!m.partner) {
+        const text = m.linkStatus === "failed" ? "Partner gescheitert" : m.extra ? "kein Link" : "wartet auf Partner";
+        return `<div class="partner none"><span class="chain">⛓</span><div class="pinfo"><div class="pname">${text}</div></div></div>`;
+      }
+      const partner = v.mons[otherPlayer][m.partner];
+      if (!partner) return "";
+      const warn = !partner.dead && !partner.inParty ? `<div class="warn">nicht im Team!</div>` : "";
+      return `<div class="partner ${partner.dead ? "dead" : ""}">
+        <span class="chain">⛓</span>
+        ${spriteHtml(partner, "small")}
+        <div class="pinfo"><div class="pname">${partner.dead ? "☠ " : ""}${esc(monName(partner))} <span style="color:var(--muted);font-weight:500">Lv.${partner.level}</span></div>
+        ${partner.dead ? "" : hpBar(partner, false)}${warn}</div>
+      </div>`;
+    });
+    return parts.join("");
+  }
+
+  function cardHtml(v, p, id) {
+    const mon = v.mons[p][id];
+    if (!mon) return `<div class="card empty"><div class="sprite"></div></div>`;
+    const key = `${p}:${id}`;
+    let cls = mon.dead ? "dead" : "";
+    if (mon.dead && !knownDead.has(key) && !firstRender) cls += " just-died";
+    if (mon.dead) knownDead.add(key);
+    const status = mon.status && mon.status !== "NONE" && !mon.dead ? `<span class="status">${esc(mon.status.slice(0, 3))}</span>` : "";
+    return `<div class="card ${cls}">
+      ${mon.dead ? '<div class="skull">☠</div>' : ""}
+      ${spriteHtml(mon)}
+      <div>
+        <div class="name">${esc(monName(mon))}${status}</div>
+        <div class="meta"><span class="species">${esc(mon.nicknamed || mon.fusion ? speciesLabel(mon) : "")}</span><span>Lv.${mon.level}</span></div>
+        ${hpBar(mon)}
+      </div>
+      ${partnerHtml(v, p, mon)}
+    </div>`;
+  }
+
+  function teamHtml(v, p) {
+    const party = v.players[p].party;
+    const cards = [];
+    for (let i = 0; i < 6; i++) cards.push(i < party.length ? cardHtml(v, p, party[i]) : `<div class="card empty"><div class="sprite"></div></div>`);
+    const label = showLabel ? `<div class="label">${esc(playerName(v, p))}</div>` : "";
+    return `<div class="team">${label}<div class="${layout}">${cards.join("")}</div></div>`;
+  }
+
+  function deathsHtml(v) {
+    const bump = lastDeaths !== null && v.deaths.pairs > lastDeaths ? "bump" : "";
+    lastDeaths = v.deaths.pairs;
+    return `<div class="deaths ${bump}">
+      <div class="big">☠ ${v.deaths.pairs}</div>
+      <div><div class="lbl">Tode</div>
+      <div class="sub">${esc(playerName(v, "1"))}: ${v.deaths[1]} · ${esc(playerName(v, "2"))}: ${v.deaths[2]}</div></div>
+    </div>`;
+  }
+
+  function render(v) {
+    if (view === "deaths") root.innerHTML = deathsHtml(v);
+    else if (view === "both") root.innerHTML = teamHtml(v, "1") + teamHtml(v, "2");
+    else root.innerHTML = teamHtml(v, player);
+    animateHpBars(root);
+    firstRender = false;
+  }
+</script>
+</body>
+</html>
