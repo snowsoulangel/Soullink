@@ -78,9 +78,15 @@
     border: 2px solid rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.45);
   }
   .tile .frame::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 17px; height: 12px; border-radius: 50%; background: rgba(0,0,0,.35); filter: blur(3px); }
-  .tile .sprite { position: absolute; z-index: 1; width: 128px; height: 128px; left: 50%; top: 6px; margin-left: -64px; }
-  .tile.linked .frame > .sprite { width: 112px; height: 112px; left: 0; top: 8px; margin-left: 0; }
-  .tile .sprite.game { transform: scale(1.3); }
+  .tile .frame > .sprite { position: absolute; z-index: 1; width: 132px; height: 132px; left: 50%; top: 4px; margin-left: -66px; }
+  .tile .frame > .sprite.game { transform: scale(1.35); }
+  /* Linked partner: large and ghosted behind your own Pokémon */
+  .tile.linked .frame > .sprite { width: 150px; height: 150px; left: 44%; top: -4px; margin-left: -75px; }
+  .tile.linked .frame > .sprite.game { transform: scale(1.3); }
+  .tile .ghost { position: absolute; z-index: 0; width: 110px; height: 110px; right: -16px; top: -10px; opacity: .5; filter: saturate(.7) drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+  .tile .ghost .sprite { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
+  .tile .ghost .sprite.game { transform: scale(1.3); }
+  .tile .ghost.dead { opacity: .28; filter: grayscale(1); }
   .tile .lv { position: absolute; z-index: 2; top: 7px; left: 8px; font-size: 13px; font-weight: 800; padding: 1px 8px; border-radius: 9px; background: rgba(0,0,0,.55); text-shadow: none; }
   .tile .st { position: absolute; z-index: 2; top: 32px; left: 8px; font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 5px; background: #6b5bd6; }
   .tile .hpbar { position: absolute; z-index: 2; left: 9px; right: 9px; bottom: 8px; height: 7px; margin: 0; background: rgba(0,0,0,.45); }
@@ -90,30 +96,21 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 12px rgba(0,0,0,.4);
     border-bottom: 3px solid var(--pc);
   }
-  /* Linked partner: own round stage in the partner's colour, bottom right */
-  .tile .bubble {
-    position: absolute; z-index: 3; right: 6px; bottom: 20px; width: 70px; height: 70px; border-radius: 50%;
-    background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--pc) 50%, transparent) 0%, transparent 72%), rgba(18,20,32,.94);
-    border: 3px solid var(--pc); box-shadow: 0 2px 10px rgba(0,0,0,.6); overflow: hidden;
+  /* Partner name in the second line of the name plate */
+  .tile .plate .pl2 {
+    display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 1px;
+    font-size: 11px; letter-spacing: .02em; font-weight: 700; color: #6a6680;
   }
-  .tile .bubble .sprite { position: absolute; width: 64px; height: 64px; left: 0; top: 0; margin: 0; }
-  .tile .bubble .sprite.game { transform: scale(1.35); }
-  .tile .bubble.dead { border-color: var(--dead); }
-  .tile .bubble.dead .sprite { filter: grayscale(1); opacity: .5; }
-  .tile .bubble .mark { position: absolute; z-index: 2; bottom: 1px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 800; text-shadow: 0 1px 3px #000; }
-  .tile .bubble.away .mark { color: var(--yellow); }
-  .tile .bubble.none { display: grid; place-items: center; color: var(--muted); font-weight: 800; font-size: 24px; border-style: dashed; border-color: rgba(255,255,255,.35); background: rgba(18,20,32,.7); }
-  .tile .chainbadge {
-    position: absolute; z-index: 4; right: 62px; bottom: 62px; width: 24px; height: 24px; border-radius: 50%;
-    display: grid; place-items: center; font-size: 13px; background: var(--link); color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.6);
-  }
-  .tile .chainbadge.dead { background: var(--dead); }
-  .tile .plate .pl2 { display: block; font-size: 11px; letter-spacing: .03em; font-weight: 700; color: #5b4bb5; overflow: hidden; text-overflow: ellipsis; }
-  .tile .plate .pl2.dead { color: var(--dead); text-decoration: line-through; }
+  .tile .plate .pl2 .chain { color: #7b4dff; flex: none; }
+  .tile .plate .pl2 .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .tile .plate .pl2.dead { color: #a09cb0; }
+  .tile .plate .pl2.dead .pn { text-decoration: line-through; }
+  .tile .plate .pl2 .away { color: #c98a00; flex: none; }
+  .tile .plate .pl2.none { color: #a09cb0; font-style: italic; font-weight: 600; }
   .tile.empty .frame { background: rgba(18,20,32,.35); border-style: dashed; box-shadow: none; }
   .tile.empty .frame::after { display: none; }
   .tile.empty .plate { opacity: .3; color: transparent; }
-  .tile.dead .frame, .tile.dead .bubble { filter: grayscale(1) brightness(.7); }
+  .tile.dead .frame { filter: grayscale(1) brightness(.7); }
   .tile.dead .plate { color: var(--dead); text-decoration: line-through; }
   .tile .bigskull { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; font-size: 54px; text-shadow: 0 2px 10px #000; }
   .tile.just-died { animation: shake .5s 3; }
@@ -208,12 +205,15 @@
     return null;
   }
 
-  function bubbleHtml(partner, otherPlayer) {
-    if (!partner) return `<div class="bubble none" title="noch kein Partner">?</div>`;
-    const cls = partner.dead ? "dead" : !partner.inParty ? "away" : "";
-    const mark = partner.dead ? "☠" : !partner.inParty ? "⚠ Box" : "";
-    return `<span class="chainbadge ${partner.dead ? "dead" : ""}">⛓</span>
-      <div class="bubble p${otherPlayer} ${cls}">${spriteHtml(partner)}${mark ? `<span class="mark">${mark}</span>` : ""}</div>`;
+  function partnerLine(partner) {
+    if (!partner) return `<div class="pl2 none"><span class="chain">⛓</span><span class="pn">wartet auf Partner</span></div>`;
+    const flag = partner.dead ? "☠" : !partner.inParty ? `<span class="away" title="nicht im Team">⚠</span>` : "";
+    return `<div class="pl2 ${partner.dead ? "dead" : ""}"><span class="chain">⛓</span><span class="pn">${esc(monName(partner))}</span>${flag}</div>`;
+  }
+
+  function ghostHtml(partner) {
+    if (!partner) return "";
+    return `<div class="ghost ${partner.dead ? "dead" : ""}">${spriteHtml(partner)}</div>`;
   }
 
   function tileHtml(v, p, id) {
@@ -223,21 +223,17 @@
     let cls = mon.dead ? "dead" : "";
     if (mon.dead && !knownDead.has(key) && !firstRender) cls += " just-died";
     if (mon.dead) knownDead.add(key);
-    if (showPartner) cls += " linked";
     const status = mon.status && mon.status !== "NONE" && !mon.dead ? `<span class="st">${esc(mon.status.slice(0, 3))}</span>` : "";
-    const otherPlayer = p === "1" ? "2" : "1";
     const partner = showPartner ? partnerOf(v, p, mon) : null;
-    const line2 = !showPartner ? ""
-      : partner ? `<span class="pl2 ${partner.dead ? "dead" : ""}">⛓ ${esc(monName(partner))}</span>`
-      : `<span class="pl2">⛓ wartet auf Partner</span>`;
+    if (partner) cls += " linked";
     return `<div class="tile ${cls}">
       <div class="frame">
+        ${ghostHtml(partner)}
         ${spriteHtml(mon)}
         <span class="lv">Lv. ${mon.level}</span>${status}
-        ${showPartner ? bubbleHtml(partner, otherPlayer) : ""}
         ${mon.dead ? `<div class="bigskull">☠</div>` : hpBar(mon, false)}
       </div>
-      <div class="plate">${esc(monName(mon))}${line2}</div>
+      <div class="plate">${esc(monName(mon))}${showPartner ? partnerLine(partner) : ""}</div>
     </div>`;
   }
 
