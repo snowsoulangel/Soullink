@@ -1,0 +1,7 @@
+# Soul Link Tracker - Konfiguration
+# Ersetze diese Zeilen durch deinen Block von der Run-Seite
+# (nach "Run erstellen" oder unter Einstellungen -> "Meine config.txt anzeigen").
+SERVER=HIER-DEINE-SERVER-ADRESSE
+ROOM=HIER-RAUM-CODE
+PLAYER=1
+KEY=HIER-SCHLUESSEL

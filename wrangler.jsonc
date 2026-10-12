@@ -1,0 +1,17 @@
+{
+  // Cloudflare Worker for the Soul Link tracker (free plan is enough).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "soullink",
+  "main": "server/worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "observability": { "enabled": true }
+}
