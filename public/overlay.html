@@ -17,6 +17,8 @@
     --green: #39d98a;
     --yellow: #ffc94d;
     --red: #ff5a6e;
+    --p1: #ff6369;
+    --p2: #7b9bff;
     --scale: 1;
   }
   html, body { margin: 0; background: transparent; color: var(--text); font-family: Rubik, "Segoe UI", sans-serif; overflow: hidden; }
@@ -67,6 +69,58 @@
   .deaths .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .deaths.bump { animation: flash 1.5s; }
 
+  /* Strip layout: big sprite tiles with a name plate, like a classic team bar */
+  .strip { display: flex; gap: 12px; padding: 8px 8px 0 0; }
+  .tile { width: 158px; flex: none; position: relative; transition: filter .6s, opacity .6s; }
+  .tile .frame {
+    height: 150px; border-radius: 16px 16px 6px 6px; position: relative; overflow: hidden;
+    background: radial-gradient(circle at 50% 64%, color-mix(in srgb, var(--pc) 45%, transparent) 0%, transparent 70%), var(--card);
+    border: 2px solid rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.45);
+  }
+  .tile .frame::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 17px; height: 12px; border-radius: 50%; background: rgba(0,0,0,.35); filter: blur(3px); }
+  .tile .sprite { position: absolute; z-index: 1; width: 128px; height: 128px; left: 50%; top: 6px; margin-left: -64px; }
+  .tile.linked .frame > .sprite { width: 112px; height: 112px; left: 0; top: 8px; margin-left: 0; }
+  .tile .sprite.game { transform: scale(1.3); }
+  .tile .lv { position: absolute; z-index: 2; top: 7px; left: 8px; font-size: 13px; font-weight: 800; padding: 1px 8px; border-radius: 9px; background: rgba(0,0,0,.55); text-shadow: none; }
+  .tile .st { position: absolute; z-index: 2; top: 32px; left: 8px; font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 5px; background: #6b5bd6; }
+  .tile .hpbar { position: absolute; z-index: 2; left: 9px; right: 9px; bottom: 8px; height: 7px; margin: 0; background: rgba(0,0,0,.45); }
+  .tile .plate {
+    margin-top: 5px; background: rgba(250,250,255,.95); color: #17151f; border-radius: 6px 6px 12px 12px;
+    font-weight: 800; font-size: 15px; letter-spacing: .06em; text-align: center; padding: 4px 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+    border-bottom: 3px solid var(--pc);
+  }
+  /* Linked partner: own round stage in the partner's colour, bottom right */
+  .tile .bubble {
+    position: absolute; z-index: 3; right: 6px; bottom: 20px; width: 70px; height: 70px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--pc) 50%, transparent) 0%, transparent 72%), rgba(18,20,32,.94);
+    border: 3px solid var(--pc); box-shadow: 0 2px 10px rgba(0,0,0,.6); overflow: hidden;
+  }
+  .tile .bubble .sprite { position: absolute; width: 64px; height: 64px; left: 0; top: 0; margin: 0; }
+  .tile .bubble .sprite.game { transform: scale(1.35); }
+  .tile .bubble.dead { border-color: var(--dead); }
+  .tile .bubble.dead .sprite { filter: grayscale(1); opacity: .5; }
+  .tile .bubble .mark { position: absolute; z-index: 2; bottom: 1px; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 800; text-shadow: 0 1px 3px #000; }
+  .tile .bubble.away .mark { color: var(--yellow); }
+  .tile .bubble.none { display: grid; place-items: center; color: var(--muted); font-weight: 800; font-size: 24px; border-style: dashed; border-color: rgba(255,255,255,.35); background: rgba(18,20,32,.7); }
+  .tile .chainbadge {
+    position: absolute; z-index: 4; right: 62px; bottom: 62px; width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 13px; background: var(--link); color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.6);
+  }
+  .tile .chainbadge.dead { background: var(--dead); }
+  .tile .plate .pl2 { display: block; font-size: 11px; letter-spacing: .03em; font-weight: 700; color: #5b4bb5; overflow: hidden; text-overflow: ellipsis; }
+  .tile .plate .pl2.dead { color: var(--dead); text-decoration: line-through; }
+  .tile.empty .frame { background: rgba(18,20,32,.35); border-style: dashed; box-shadow: none; }
+  .tile.empty .frame::after { display: none; }
+  .tile.empty .plate { opacity: .3; color: transparent; }
+  .tile.dead .frame, .tile.dead .bubble { filter: grayscale(1) brightness(.7); }
+  .tile.dead .plate { color: var(--dead); text-decoration: line-through; }
+  .tile .bigskull { position: absolute; z-index: 3; inset: 0; display: grid; place-items: center; font-size: 54px; text-shadow: 0 2px 10px #000; }
+  .tile.just-died { animation: shake .5s 3; }
+  .tile.just-died .frame { animation: flash 1.5s; }
+  .p1 { --pc: var(--p1); }
+  .p2 { --pc: var(--p2); }
+
   .notice { font-size: 14px; color: var(--muted); background: var(--card); padding: 8px 12px; border-radius: 10px; display: inline-block; }
 </style>
 </head>
@@ -79,14 +133,14 @@
   //   room=<id>                 required
   //   view=team|both|deaths     what to show (default team)
   //   player=1|2                whose team (default 1)
-  //   layout=row|column         cards next to or below each other
-  //   partner=1|0               show the linked partner under each Pokémon
+  //   layout=strip|row|column   big sprite tiles in a bar, cards next to or below each other
+  //   partner=1|0               show the linked partner (bubble on strip tiles)
   //   label=1|0                 show the player name above the team
   //   scale=1.0                 size
   const room = params.get("room");
   const view = params.get("view") || "team";
   const player = params.get("player") === "2" ? "2" : "1";
-  const layout = params.get("layout") === "column" ? "column" : "row";
+  const layout = ["column", "strip"].includes(params.get("layout")) ? params.get("layout") : "row";
   const showPartner = params.get("partner") !== "0";
   const showLabel = params.get("label") === "1" || (view === "both" && params.get("label") !== "0");
   document.documentElement.style.setProperty("--scale", params.get("scale") || "1");
@@ -143,12 +197,59 @@
     </div>`;
   }
 
+  // Linked partner of a strip tile (fusions: first linked partner)
+  function partnerOf(v, p, mon) {
+    const otherPlayer = p === "1" ? "2" : "1";
+    for (const id of [mon.id, ...(mon.fusedWith || [])]) {
+      const m = v.mons[p][id];
+      const partner = m && m.partner ? v.mons[otherPlayer][m.partner] : null;
+      if (partner) return partner;
+    }
+    return null;
+  }
+
+  function bubbleHtml(partner, otherPlayer) {
+    if (!partner) return `<div class="bubble none" title="noch kein Partner">?</div>`;
+    const cls = partner.dead ? "dead" : !partner.inParty ? "away" : "";
+    const mark = partner.dead ? "☠" : !partner.inParty ? "⚠ Box" : "";
+    return `<span class="chainbadge ${partner.dead ? "dead" : ""}">⛓</span>
+      <div class="bubble p${otherPlayer} ${cls}">${spriteHtml(partner)}${mark ? `<span class="mark">${mark}</span>` : ""}</div>`;
+  }
+
+  function tileHtml(v, p, id) {
+    const mon = id ? v.mons[p][id] : null;
+    if (!mon) return `<div class="tile empty"><div class="frame"></div><div class="plate">–</div></div>`;
+    const key = `${p}:${id}`;
+    let cls = mon.dead ? "dead" : "";
+    if (mon.dead && !knownDead.has(key) && !firstRender) cls += " just-died";
+    if (mon.dead) knownDead.add(key);
+    if (showPartner) cls += " linked";
+    const status = mon.status && mon.status !== "NONE" && !mon.dead ? `<span class="st">${esc(mon.status.slice(0, 3))}</span>` : "";
+    const otherPlayer = p === "1" ? "2" : "1";
+    const partner = showPartner ? partnerOf(v, p, mon) : null;
+    const line2 = !showPartner ? ""
+      : partner ? `<span class="pl2 ${partner.dead ? "dead" : ""}">⛓ ${esc(monName(partner))}</span>`
+      : `<span class="pl2">⛓ wartet auf Partner</span>`;
+    return `<div class="tile ${cls}">
+      <div class="frame">
+        ${spriteHtml(mon)}
+        <span class="lv">Lv. ${mon.level}</span>${status}
+        ${showPartner ? bubbleHtml(partner, otherPlayer) : ""}
+        ${mon.dead ? `<div class="bigskull">☠</div>` : hpBar(mon, false)}
+      </div>
+      <div class="plate">${esc(monName(mon))}${line2}</div>
+    </div>`;
+  }
+
   function teamHtml(v, p) {
     const party = v.players[p].party;
     const cards = [];
-    for (let i = 0; i < 6; i++) cards.push(i < party.length ? cardHtml(v, p, party[i]) : `<div class="card empty"><div class="sprite"></div></div>`);
+    for (let i = 0; i < 6; i++) {
+      if (layout === "strip") cards.push(tileHtml(v, p, party[i]));
+      else cards.push(i < party.length ? cardHtml(v, p, party[i]) : `<div class="card empty"><div class="sprite"></div></div>`);
+    }
     const label = showLabel ? `<div class="label">${esc(playerName(v, p))}</div>` : "";
-    return `<div class="team">${label}<div class="${layout}">${cards.join("")}</div></div>`;
+    return `<div class="team p${p}">${label}<div class="${layout}">${cards.join("")}</div></div>`;
   }
 
   function deathsHtml(v) {
@@ -161,12 +262,17 @@
     </div>`;
   }
 
+  let lastHtml = "";
   function render(v) {
-    if (view === "deaths") root.innerHTML = deathsHtml(v);
-    else if (view === "both") root.innerHTML = teamHtml(v, "1") + teamHtml(v, "2");
-    else root.innerHTML = teamHtml(v, player);
-    animateHpBars(root);
+    let html;
+    if (view === "deaths") html = deathsHtml(v);
+    else if (view === "both") html = teamHtml(v, "1") + teamHtml(v, "2");
+    else html = teamHtml(v, player);
     firstRender = false;
+    if (html === lastHtml) return;   // nothing visible changed: keep the DOM (no sprite flicker)
+    lastHtml = html;
+    root.innerHTML = html;
+    animateHpBars(root);
   }
 </script>
 </body>

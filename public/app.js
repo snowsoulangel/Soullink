@@ -207,52 +207,31 @@ function renderTab(v) {
   }
 }
 
-function partnerLines(v, p, mon) {
-  const op = p === "1" ? "2" : "1";
-  return [mon.id, ...(mon.fusedWith || [])].map((id) => {
-    const m = v.mons[p][id];
-    if (!m) return "";
-    if (!m.partner) {
-      const text = m.linkStatus === "failed" ? "Partner-Begegnung gescheitert" : m.extra ? "kein Link (Zusatz-Pokémon)" : `wartet auf Partner (${esc(m.route)})`;
-      return `<div class="partner"><span class="chain">⛓</span><span class="muted">${text}</span></div>`;
-    }
-    const pm = v.mons[op][m.partner];
-    if (!pm) return "";
-    let note = "";
-    if (pm.dead) note = `<div class="bad">☠ tot</div>`;
-    else if (mon.dead) note = `<div class="bad">muss weg (Partner tot)</div>`;
-    else if (!pm.inParty) note = `<div class="warn">⚠ nicht im Team (${esc(locationLabel(pm))})</div>`;
-    return `<div class="partner">${spriteHtml(pm, "small")}<div class="pn">
-      <div><span class="chain">⛓</span> <b>${esc(monName(pm))}</b> Lv.${pm.level}</div>
-      ${pm.dead ? "" : hpBar(pm, false)}${note}</div></div>`;
-  }).join("");
-}
-
-function monCard(v, p, mon) {
-  return `<div class="mon ${mon.dead ? "dead" : ""}">
-    <div class="row">${spriteHtml(mon)}<div style="min-width:0;flex:1">
-      <div class="name">${mon.dead ? "☠ " : ""}${esc(monName(mon))}</div>
-      <div class="sub">${mon.nicknamed || mon.fusion ? `${esc(speciesLabel(mon))} · ` : ""}Lv.${mon.level}</div>
-      <div class="sub">📍 ${esc(mon.route)}</div>
-      ${hpBar(mon)}
-    </div></div>
-    ${partnerLines(v, p, mon)}
-  </div>`;
-}
-
 function teamsTab(v) {
   const toggle = `<div class="seg" role="group" aria-label="Ansicht">
-    <button class="${teamMode === "pairs" ? "active" : ""}" data-teammode="pairs">⛓ Paare</button>
-    <button class="${teamMode === "teams" ? "active" : ""}" data-teammode="teams">Teams</button></div>`;
-  return toggle + (teamMode === "pairs" ? pairsView(v) : teamColumns(v));
+    <button class="${teamMode === "box" ? "" : "active"}" data-teammode="team">⛓ Im Team</button>
+    <button class="${teamMode === "box" ? "active" : ""}" data-teammode="box">📦 In der Box</button></div>`;
+  return toggle + (teamMode === "box" ? boxView(v) : teamPairsView(v));
 }
 
 //----------------------------------------------------------------------------
-// Pair view: every party Pokémon next to its linked partner, big sprites
+// Pair views: linked Pokémon side by side with big sprites
+// A row is { sides: {1: [mon], 2: [mon]}, routes: [name], dead, reason: {1, 2}, context }
 //----------------------------------------------------------------------------
 const tagsOf = (m) => [m.id, ...(m.fusedWith || [])];
 
-function pairsView(v) {
+function pairHead(v) {
+  return `<div class="pairhead">${PLAYERS.map((p) =>
+    `<div class="p${p}"><span class="pdot"></span>${esc(playerName(v, p))}</div>`).join(`<div></div>`)}</div>`;
+}
+
+function pairList(v, rows, emptyText) {
+  if (!rows.length) return `<div class="panel empty">${emptyText}</div>`;
+  return `<div class="pairs">${pairHead(v)}${rows.map((r) => pairRow(v, r)).join("")}</div>`;
+}
+
+// Every party Pokémon of both players with its partner(s), wherever they are.
+function teamPairsView(v) {
   const shown = { 1: new Set(), 2: new Set() };
   const rows = [];
   for (const p of PLAYERS) {
@@ -267,47 +246,83 @@ function pairsView(v) {
         const tm = v.mons[p][t];
         if (!tm) continue;
         const pm = tm.partner ? v.mons[op][tm.partner] : null;
-        links.push({ route: tm.route, status: tm.linkStatus, extra: tm.extra });
+        links.push(tm);
         if (pm && !partners.some((x) => tagsOf(x).includes(pm.id))) {
           partners.push(pm);
           tagsOf(pm).forEach((x) => shown[op].add(x));
         }
       }
-      const reason = links.some((l) => l.status === "failed") ? "Begegnung gescheitert"
+      const reason = links.some((l) => l.linkStatus === "failed") ? "Begegnung gescheitert"
         : links.every((l) => l.extra) ? "kein Link (Zusatz)" : "wartet auf Partner";
-      const sides = { [p]: [mon], [op]: partners };
-      rows.push({ sides, links, reason, owner: p });
+      rows.push({
+        sides: { [p]: [mon], [op]: partners },
+        routes: [...new Set(links.map((l) => l.route))],
+        dead: links.some((l) => l.linkStatus === "dead"),
+        reason: { [op]: reason },
+        context: "team",
+      });
     }
   }
-  if (!rows.length) return `<div class="panel empty">Noch keine Teams. Spiel mit Mod starten und start.bat laufen lassen.</div>`;
+  return pairList(v, rows, "Noch keine Teams. Spiel mit Mod starten und start.bat laufen lassen.");
+}
 
-  const head = `<div class="pairhead">${PLAYERS.map((p) =>
-    `<div class="p${p}"><span class="pdot"></span>${esc(playerName(v, p))}</div>`).join(`<div></div>`)}</div>`;
-  return `<div class="pairs">${head}${rows.map((r) => pairRow(v, r)).join("")}</div>`;
+function routeRow(v, r, context) {
+  const sides = {};
+  const reason = {};
+  for (const p of PLAYERS) {
+    const m = r.mon[p] ? v.mons[p][r.mon[p]] : null;
+    sides[p] = m ? [m] : [];
+    reason[p] = r.failed[p] ? "Begegnung gescheitert" : "keine Begegnung";
+  }
+  return { sides, routes: [r.name], dead: r.status === "dead", reason, context, deadAt: deathTime(v, r) };
+}
+
+function deathTime(v, r) {
+  let t = 0;
+  for (const p of PLAYERS) {
+    const m = r.mon[p] ? v.mons[p][r.mon[p]] : null;
+    if (m && m.dead && m.deadAt) t = Math.max(t, m.deadAt);
+  }
+  return t;
+}
+
+// Living links where neither Pokémon is in the team.
+function boxView(v) {
+  const rows = v.routes
+    .filter((r) => r.status === "alive" || r.status === "open")
+    .filter((r) => PLAYERS.every((p) => {
+      const m = r.mon[p] ? v.mons[p][r.mon[p]] : null;
+      return !m || !m.inParty;
+    }))
+    .filter((r) => PLAYERS.some((p) => r.mon[p]))
+    .map((r) => routeRow(v, r, "box"));
+  return pairList(v, rows, "Keine Paare in der Box.");
 }
 
 function pairRow(v, row) {
-  const dead = row.links.some((l) => l.status === "dead");
   const side = (p) => {
     const list = row.sides[p];
     if (!list.length) return `<div class="side p${p}"><div class="bigmon ghost"><div class="stage"><span class="q">?</span></div>
-      <div class="meta"><div class="sub">${esc(row.reason)}</div></div></div></div>`;
-    return `<div class="side p${p} ${list.length > 1 ? "multi" : ""}">${list.map((m) => bigCard(v, p, m, p !== row.owner)).join("")}</div>`;
+      <div class="meta"><div class="sub">${esc(row.reason[p] || "")}</div></div></div></div>`;
+    return `<div class="side p${p} ${list.length > 1 ? "multi" : ""}">${list.map((m) => bigCard(v, m, row.context)).join("")}</div>`;
   };
-  const routes = [...new Set(row.links.map((l) => l.route))];
-  return `<div class="pair ${dead ? "dead" : ""}">
+  const when = row.context === "grave" && row.deadAt
+    ? `<span class="route when">${new Date(row.deadAt).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>` : "";
+  return `<div class="pair ${row.dead ? "dead" : ""}">
     ${side("1")}
-    <div class="linkmid"><span class="ring">${dead ? "☠" : "⛓"}</span>${routes.map((r) => `<span class="route">${esc(r)}</span>`).join("")}</div>
+    <div class="linkmid"><span class="ring">${row.dead ? "☠" : "⛓"}</span>${row.routes.map((r) => `<span class="route">${esc(r)}</span>`).join("")}${when}</div>
     ${side("2")}
   </div>`;
 }
 
-function bigCard(v, p, mon, isPartner) {
+function bigCard(v, mon, context) {
   let note = "";
   if (mon.dead) note = `<span class="chip bad">☠ tot</span>`;
+  else if (context === "grave") note = `<span class="chip bad">mit in den Tod gerissen</span>`;
   else if (mon.linkStatus === "dead") note = `<span class="chip bad">muss weg (Partner tot)</span>`;
-  else if (isPartner && !mon.inParty) note = `<span class="chip warn">⚠ ${esc(locationLabel(mon))}</span>`;
-  const away = isPartner && !mon.inParty && !mon.dead;
+  else if (!mon.inParty && context === "team") note = `<span class="chip warn">⚠ ${esc(locationLabel(mon))}</span>`;
+  else if (!mon.inParty) note = `<span class="chip">📦 ${esc(locationLabel(mon))}</span>`;
+  const away = context === "team" && !mon.inParty && !mon.dead;
   return `<div class="bigmon ${mon.dead ? "dead" : ""} ${away ? "away" : ""}">
     <div class="stage">${spriteHtml(mon, "xl")}
       ${mon.shiny ? `<span class="shiny" title="Shiny">✨</span>` : ""}
@@ -315,17 +330,9 @@ function bigCard(v, p, mon, isPartner) {
     <div class="meta">
       <div class="name">${esc(monName(mon))}</div>
       <div class="sub">${esc(speciesLabel(mon))}</div>
-      ${mon.dead ? "" : hpBar(mon)}
+      ${mon.dead || context === "grave" ? "" : hpBar(mon)}
       ${note}
     </div></div>`;
-}
-
-function teamColumns(v) {
-  return `<div class="teamgrid">${PLAYERS.map((p) => {
-    const party = v.players[p].party.map((id) => v.mons[p][id]).filter(Boolean);
-    return `<div class="panel p${p}"><h2 style="color:var(--pc)">Team ${esc(playerName(v, p))}</h2>
-      ${party.length ? `<div class="mons">${party.map((m) => monCard(v, p, m)).join("")}</div>` : `<div class="empty">Kein Team</div>`}</div>`;
-  }).join("")}</div>`;
 }
 
 function monCell(v, p, id, route) {
@@ -369,18 +376,11 @@ function linksTab(v) {
 }
 
 function graveyardTab(v) {
-  const dead = v.routes.filter((r) => r.status === "dead");
-  if (!dead.length) return `<div class="panel empty">Noch niemand gestorben. Weiter so! 🍀</div>`;
-  return `<div class="panel tablewrap"><table>
-    <thead><tr><th>Route</th><th>${esc(playerName(v, "1"))}</th><th>${esc(playerName(v, "2"))}</th><th>Wann</th></tr></thead>
-    <tbody>${dead.map((r) => {
-      const a = r.mon[1] ? v.mons[1][r.mon[1]] : null;
-      const b = r.mon[2] ? v.mons[2][r.mon[2]] : null;
-      const cell = (m) => (m ? `<div class="cellmon">${spriteHtml(m, "small")}<div class="info"><div><b>${m.dead ? "☠ " : ""}${esc(monName(m))}</b> Lv.${m.level}</div>
-        <div class="muted small">${m.dead ? "gestorben" : "mit in den Tod gerissen"}</div></div></div>` : "—");
-      const t = Math.max((a && a.dead && a.deadAt) || 0, (b && b.dead && b.deadAt) || 0);
-      return `<tr><td><b>${esc(r.name)}</b></td><td>${cell(a)}</td><td>${cell(b)}</td><td class="muted small">${t ? new Date(t).toLocaleString("de-DE") : "—"}</td></tr>`;
-    }).join("")}</tbody></table></div>`;
+  const rows = v.routes
+    .filter((r) => r.status === "dead")
+    .map((r) => routeRow(v, r, "grave"))
+    .sort((a, b) => b.deadAt - a.deadAt);   // most recent first
+  return pairList(v, rows, "Noch niemand gestorben. Weiter so! 🍀");
 }
 
 function allTab(v) {
@@ -410,6 +410,9 @@ function eventsTab(v) {
 function obsTab() {
   const base = `${location.origin}/overlay.html?room=${room}`;
   const items = [
+    ["Team-Leiste Spieler 1 (große Sprites, Partner als Blase)", `${base}&player=1&layout=strip`, "1040 × 250"],
+    ["Team-Leiste Spieler 2 (große Sprites, Partner als Blase)", `${base}&player=2&layout=strip`, "1040 × 250"],
+    ["Beide Team-Leisten untereinander", `${base}&view=both&layout=strip`, "1040 × 540"],
     ["Team Spieler 1 mit Partnern (nebeneinander)", `${base}&player=1`, "1000 × 340"],
     ["Team Spieler 2 mit Partnern (nebeneinander)", `${base}&player=2`, "1000 × 340"],
     ["Team Spieler 1 (untereinander, für den Rand)", `${base}&player=1&layout=column`, "300 × 1000"],

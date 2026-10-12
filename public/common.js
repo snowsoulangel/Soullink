@@ -33,12 +33,12 @@ export function spriteHtml(mon, cls = "") {
   if (!own) return fallback;
   const title = mon.fusion && mon.head && mon.body ? ` title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}"` : "";
   // on error the Showdown version replaces this element
-  return `<div class="sprite game ${cls}"${title}><img src="${esc(own)}" alt="" loading="lazy" data-fallback="${esc(fallback)}" onerror="this.parentNode.outerHTML=this.dataset.fallback"></div>`;
+  return `<div class="sprite game ${cls}"${title}><img src="${esc(own)}" alt="" decoding="sync" data-fallback="${esc(fallback)}" onerror="this.parentNode.outerHTML=this.dataset.fallback"></div>`;
 }
 
 function showdownSpriteHtml(mon, cls) {
   const img = (sym, extra = "") =>
-    `<img src="${spriteUrl(sym, mon.shiny)}" alt="" loading="lazy" class="${extra}" onerror="if(this.dataset.f){this.style.visibility='hidden'}else{this.dataset.f=1;this.src='${spriteUrl(sym, false)}'}">`;
+    `<img src="${spriteUrl(sym, mon.shiny)}" alt="" decoding="sync" class="${extra}" onerror="if(this.dataset.f){this.style.visibility='hidden'}else{this.dataset.f=1;this.src='${spriteUrl(sym, false)}'}">`;
   if (mon.fusion && mon.head && mon.body) {
     return `<div class="sprite fusion ${cls}" title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}">${img(mon.body.species, "body")}${img(mon.head.species, "head")}</div>`;
   }

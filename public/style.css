@@ -88,16 +88,6 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 
 /* Team cards */
 .teamgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.mons { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.mon { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px; position: relative; }
-.mon.dead { background: var(--dead-bg); }
-.mon.dead .sprite { filter: grayscale(1); opacity: .7; }
-.mon .name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mon .sub { font-size: 12px; color: var(--muted); }
-.mon .row { display: flex; gap: 8px; align-items: center; }
-.mon .partner { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 13px; display: flex; gap: 6px; align-items: center; }
-.mon .partner .pn { min-width: 0; flex: 1; }
-.mon .partner .pn div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .warn { color: var(--yellow); font-size: 12px; font-weight: 600; }
 .bad { color: var(--red); font-weight: 600; }
 .chain { color: var(--accent); }
@@ -160,6 +150,7 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 .linkmid .ring { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; background: var(--accent-soft); color: var(--accent); border: 2px solid var(--accent); }
 .linkmid .route { font-size: 11px; font-weight: 600; color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }
 .pair.dead .linkmid .ring { background: var(--dead-bg); color: var(--red); border-color: var(--red); }
+.linkmid .route.when { color: var(--red); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   .stage .sprite { transition: none; }
   .bigmon:hover .stage .sprite { transform: none; }
