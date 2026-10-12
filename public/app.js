@@ -466,7 +466,10 @@ function eventsTab(v) {
 
 function obsTab() {
   const base = `${location.origin}/overlay.html?room=${room}`;
+  const frame = `${location.origin}/frame.html?room=${room}`;
   const items = [
+    ["Szenen-Hintergrund (ganz unten in der Szene)", `${frame}&layer=bg`, "1920 × 1080"],
+    ["Rahmen um Spielfenster und Facecams (über Spiel und Cams, unter den Overlays)", `${frame}&layer=frame`, "1920 × 1080"],
     ["Team-Leiste Spieler 1 (große Sprites, Partner als Blase)", `${base}&player=1&layout=strip`, "1040 × 250"],
     ["Team-Leiste Spieler 2 (große Sprites, Partner als Blase)", `${base}&player=2&layout=strip`, "1040 × 250"],
     ["Beide Team-Leisten untereinander", `${base}&view=both&layout=strip`, "1040 × 540"],

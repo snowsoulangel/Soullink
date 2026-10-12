@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soul Link Rahmen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Scene decoration for the 1920x1080 layout (same coordinates as the OBS scene):
+       layer=bg     background + glass panels + empty slots  (bottom of the scene)
+       layer=frame  frames, glow and name plates             (above game captures and cams)
+       layer=all    both, for previewing                                                   */
+  :root {
+    --p1: #ff6369; --p2: #7b9bff; --link: #b48cff;
+    --text: #f4f5fb; --muted: #aab0c8;
+  }
+  html, body { margin: 0; overflow: hidden; background: transparent; font-family: Rubik, "Segoe UI", sans-serif; color: var(--text); }
+  #canvas { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: top left; }
+  .p1 { --pc: var(--p1); } .p2 { --pc: var(--p2); }
+  .abs { position: absolute; }
+
+  /* ---------- background layer ---------- */
+  .bg { inset: 0; overflow: hidden;
+    background:
+      radial-gradient(ellipse 1000px 760px at 6% 22%, color-mix(in srgb, var(--p1) 42%, transparent), transparent 70%),
+      radial-gradient(ellipse 1000px 760px at 94% 22%, color-mix(in srgb, var(--p2) 42%, transparent), transparent 70%),
+      radial-gradient(ellipse 700px 500px at 50% 42%, color-mix(in srgb, var(--link) 30%, transparent), transparent 70%),
+      linear-gradient(180deg, #1b1626 0%, #15121f 55%, #100e18 100%); }
+  /* subtle diagonal pattern */
+  .bg::before { content: ""; position: absolute; inset: 0; opacity: .5;
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 2px, transparent 2px 22px); }
+  /* faint chain links behind the centre column */
+  .chainmark { left: 960px; top: 300px; width: 360px; height: 360px; margin-left: -180px; opacity: .07; }
+  .slot { border-radius: 14px; background: rgba(6, 6, 12, .55); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+  .glass { border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 30px rgba(0,0,0,.35); backdrop-filter: blur(2px); }
+  .seam { height: 3px; border-radius: 2px; opacity: .7;
+    background: linear-gradient(90deg, transparent, var(--p1) 20%, var(--link) 50%, var(--p2) 80%, transparent); }
+
+  /* ---------- frame layer ---------- */
+  /* outer element glows, inner ring is the gradient border with the inside cut out
+     (a mask would also cut away the glow if both were on one element) */
+  .frame { pointer-events: none; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--pc) 75%, transparent)) drop-shadow(0 0 2px rgba(0,0,0,.8)); }
+  .frame .ring { position: absolute; inset: 0; border-radius: 14px; box-sizing: border-box; border: 4px solid transparent;
+    background: linear-gradient(135deg, var(--pc), color-mix(in srgb, var(--pc) 45%, var(--link)) 60%, var(--pc)) border-box;
+    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) padding-box exclude, linear-gradient(#000 0 0); }
+  .frame.cam .ring { border-radius: 18px; }
+  /* small accents on the corners */
+  .corner { width: 26px; height: 26px; border: 4px solid var(--pc); filter: drop-shadow(0 0 6px var(--pc)); }
+  .corner.tl { border-right: 0; border-bottom: 0; border-top-left-radius: 16px; }
+  .corner.br { border-left: 0; border-top: 0; border-bottom-right-radius: 16px; }
+  /* name plate on the lower edge of a game frame */
+  .plate { height: 30px; padding: 0 16px 0 12px; display: flex; align-items: center; gap: 9px; transform: translateX(-50%);
+    border-radius: 15px; background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 92%, #fff 8%), color-mix(in srgb, var(--pc) 75%, #000 25%));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--pc) 70%, transparent), 0 3px 8px rgba(0,0,0,.5);
+    font-weight: 800; font-size: 17px; letter-spacing: .1em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); white-space: nowrap; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.35); box-shadow: 0 0 0 2px rgba(0,0,0,.25); }
+  .dot.on { background: #39d98a; box-shadow: 0 0 8px #39d98a, 0 0 0 2px rgba(0,0,0,.25); }
+  /* name strip inside the bottom of a facecam frame */
+  .camname { height: 26px; display: flex; align-items: center; justify-content: center; gap: 7px; border-radius: 0 0 14px 14px;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.75) 45%); font-weight: 800; font-size: 13px; letter-spacing: .12em;
+    text-transform: uppercase; text-shadow: 0 1px 3px #000; }
+  .camname .dot { width: 7px; height: 7px; }
+</style>
+</head>
+<body>
+<div id="canvas"></div>
+<script type="module">
+  import { params, esc, playerName, connect } from "./common.js";
+
+  // URL options: room=<id> (names + online status), layer=bg|frame|all
+  const room = params.get("room");
+  const layer = ["bg", "frame"].includes(params.get("layer")) ? params.get("layer") : "all";
+  const canvas = document.getElementById("canvas");
+
+  // Layout of the OBS scene (1920x1080)
+  const L = {
+    game: { 1: [16, 16, 800, 600], 2: [1104, 16, 800, 600] },
+    cam: { 1: [832, 16, 256, 192], 2: [832, 220, 256, 192] },
+    teams: [4, 622, 1912, 244],
+    bottom: [4, 868, 1912, 208],
+  };
+  const box = ([x, y, w, h], cls, inner = "") => `<div class="abs ${cls}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px">${inner}</div>`;
+
+  function bgHtml() {
+    return `<div class="abs bg"></div>
+      <svg class="abs chainmark" viewBox="0 0 100 100" fill="none" stroke="#fff" stroke-width="7">
+        <rect x="8" y="30" width="52" height="40" rx="20"/><rect x="40" y="30" width="52" height="40" rx="20"/></svg>
+      ${box(L.teams, "glass")}${box(L.bottom, "glass")}
+      ${box([L.teams[0] + 40, L.teams[1] - 2, L.teams[2] - 80, 3], "seam")}
+      ${[1, 2].map((p) => box(L.game[p], "slot") + box(L.cam[p], "slot")).join("")}`;
+  }
+
+  function frameHtml(v) {
+    return [1, 2].map((p) => {
+      const name = v ? playerName(v, String(p)) : `Spieler ${p}`;
+      const online = v && v.players[p] && v.players[p].online;
+      const dot = `<span class="dot ${online ? "on" : ""}"></span>`;
+      const [gx, gy, gw, gh] = L.game[p];
+      const [cx, cy, cw, ch] = L.cam[p];
+      return `<div class="p${p}">
+        ${box(L.game[p], "frame", `<div class="ring"></div>`)}
+        ${box([gx - 6, gy - 6, 26, 26], "corner tl")}${box([gx + gw - 20, gy + gh - 20, 26, 26], "corner br")}
+        <div class="abs plate" style="left:${gx + gw / 2}px;top:${gy + gh - 15}px">${dot}${esc(name)}</div>
+        ${box(L.cam[p], "frame cam", `<div class="ring"></div>`)}
+        ${box([cx, cy + ch - 26, cw, 26], "camname", `${dot}${esc(name)}`)}
+      </div>`;
+    }).join("");
+  }
+
+  let lastHtml = "";
+  function render(v) {
+    const html = (layer !== "frame" ? bgHtml() : "") + (layer !== "bg" ? frameHtml(v) : "");
+    if (html === lastHtml) return;
+    lastHtml = html;
+    canvas.innerHTML = html;
+  }
+
+  // scale the 1920x1080 canvas to the browser source size
+  const fit = () => { canvas.style.transform = `scale(${Math.min(innerWidth / 1920, innerHeight / 1080)})`; };
+  addEventListener("resize", fit);
+  fit();
+  render(null);
+  if (room && layer !== "bg") connect(room, render);
+</script>
+</body>
+</html>
