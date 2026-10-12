@@ -597,7 +597,8 @@ export function applyAction(room, actor, action, now) {
         if (value) names[p] = value;
         else delete names[p];
       }
-      pushEvent(room, actor, "names", `Anzeigenamen von ${actorName} geändert: ${playerLabel(room, "1")} & ${playerLabel(room, "2")}`, now);
+      // name the actor with the new name (actorName was taken before the change)
+      pushEvent(room, actor, "names", `Anzeigenamen von ${playerLabel(room, actor)} geändert: ${playerLabel(room, "1")} & ${playerLabel(room, "2")}`, now);
       return null;
     }
     case "setKills": {
