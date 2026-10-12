@@ -22,7 +22,7 @@
     --scale: 1;
   }
   html, body { margin: 0; background: transparent; color: var(--text); font-family: Rubik, "Segoe UI", sans-serif; overflow: hidden; }
-  #root { transform: scale(var(--scale)); transform-origin: top left; padding: 8px; }
+  #root { transform: scale(var(--scale)); transform-origin: top left; padding: 8px; box-sizing: border-box; }
   .row { display: flex; gap: 10px; }
   .column { display: flex; flex-direction: column; gap: 8px; }
   .label { font-weight: 800; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px 2px; text-shadow: 0 1px 3px #000; }
@@ -130,8 +130,54 @@
   .p1 { --pc: var(--p1); }
   .p2 { --pc: var(--p2); }
 
+  /* Graveyard bar */
+  .gbar { display: flex; gap: 10px; align-items: stretch; }
+  .glabel { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 96px; padding: 8px 12px;
+    background: var(--card); border: 1px solid var(--card-border); border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .glabel .gl1 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .glabel .gl2 { font-size: 34px; font-weight: 800; color: var(--dead); line-height: 1.1; }
+  .grave { width: 200px; flex: none; padding: 6px 8px 7px; background: var(--card); border: 1px solid var(--card-border);
+    border-top: 4px solid var(--pc); border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+  .gpair { display: flex; align-items: center; justify-content: center; gap: 2px; height: 78px; }
+  .gmon { position: relative; width: 76px; height: 76px; }
+  .gmon .sprite { width: 100%; height: 100%; margin: 0; filter: grayscale(1) brightness(.85); }
+  .gmon .sprite.game { transform: scale(1.25); }
+  .gmon.partner { width: 60px; height: 60px; opacity: .75; }
+  .gskull { position: absolute; right: -2px; top: -2px; font-size: 18px; text-shadow: 0 1px 4px #000; }
+  .gchain { color: var(--link); font-size: 13px; }
+  .gname { font-size: 13px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .gname .gplus { font-weight: 600; color: var(--muted); }
+  .gcause { font-size: 10.5px; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .gempty { align-self: center; color: var(--muted); font-size: 14px; padding: 0 10px; }
+  /* compact: many small cards (icons + names), wrapping into rows */
+  .gbar.compact { flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+  .gbar.compact .glabel { min-width: 74px; min-height: 66px; padding: 4px 8px; border-radius: 10px; }
+  .gbar.compact .glabel .gl1 { font-size: 10px; }
+  .gbar.compact .glabel .gl2 { font-size: 24px; }
+  .gbar.compact .grave { width: 118px; padding: 3px 5px 4px; border-radius: 9px; border-top-width: 3px; }
+  .gbar.compact .gpair { height: 44px; gap: 0; }
+  .gbar.compact .gmon, .gbar.compact .boxcard .gmon { width: 44px; height: 44px; border-radius: 8px; }
+  .gbar.compact .gmon.partner { width: 40px; height: 40px; }
+  .gbar.compact .gskull { font-size: 12px; right: -3px; top: -3px; }
+  .gbar.compact .gchain { font-size: 10px; }
+  .gbar.compact .gname { font-size: 10.5px; margin-top: 1px; }
+  .gbar.compact .gname .gplus { color: var(--link); }
+  .gbar.compact .gcause { display: none; }
+  .gbar.compact .gq { font-size: 16px; }
+  .gbar.compact .gempty { font-size: 12px; }
+
+  /* box bar: same cards, but alive and in colour */
+  .glabel.box .gl2 { color: var(--text); font-size: 30px; }
+  .boxcard { border-top: 4px solid var(--link); }
+  .boxcard .gmon { width: 70px; height: 70px; border-radius: 12px;
+    background: radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--pc) 40%, transparent) 0%, transparent 70%); }
+  .boxcard .gmon .sprite { filter: none; }
+  .boxcard .gmon.empty { display: grid; place-items: center; border: 2px dashed rgba(255,255,255,.2); }
+  .boxcard .gq { font-size: 24px; font-weight: 800; color: var(--muted); }
+
   /* Kill counter */
   .kills { display: flex; gap: 14px; }
+  .kills.stack { flex-direction: column; gap: 10px; }
   .withkills { display: flex; gap: 22px; align-items: flex-end; }
   .withkills .kills { flex-direction: column; gap: 10px; padding-bottom: 4px; }
   .killbox { position: relative; display: flex; align-items: flex-end; gap: 8px; min-width: 180px; padding: 8px 18px 10px 16px;
@@ -153,12 +199,16 @@
 
   // URL options:
   //   room=<id>                 required
-  //   view=team|both|deaths     what to show (default team)
+  //   view=team|both|deaths|grave|box  what to show (default team); grave = graveyard bar,
+  //                             box = living pairs in the PC (neither Pokémon in the team)
+  //   max=8                     graveyard/box: how many cards to show (compact: 30)
+  //   compact=1                 graveyard/box: small cards (icons + names), wrap into rows
   //   player=1|2                whose team (default 1)
   //   layout=strip|row|column   big sprite tiles in a bar, cards next to or below each other
   //   partner=1|0               show the linked partner (bubble on strip tiles)
   //   label=1|0                 show the player name above the team
   //   kills=1                   kill counter next to the team (strip layout)
+  //   stack=1                   kill counter: boxes below each other instead of side by side
   //   scale=1.0                 size
   const room = params.get("room");
   const view = params.get("view") || "team";
@@ -167,7 +217,25 @@
   const showPartner = params.get("partner") !== "0";
   const showLabel = params.get("label") === "1" || (view === "both" && params.get("label") !== "0");
   const showKills = params.get("kills") === "1";
-  document.documentElement.style.setProperty("--scale", params.get("scale") || "1");
+  const userScale = Math.max(0.1, Number(params.get("scale")) || 1);
+
+  // Never cut anything off: if the content does not fit the browser source, shrink it
+  // (wrapping layouts get the extra width back) until it does; grow back up to scale=.
+  function fit() {
+    const fits = (s) => {
+      root.style.width = `${window.innerWidth / s}px`;
+      document.documentElement.style.setProperty("--scale", String(s));
+      return root.scrollWidth * s <= window.innerWidth + 1 && root.scrollHeight * s <= window.innerHeight + 1;
+    };
+    if (fits(userScale)) return;
+    let lo = 0.2, hi = userScale;
+    for (let i = 0; i < 10; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) lo = mid; else hi = mid;
+    }
+    fits(lo);
+  }
+  window.addEventListener("resize", fit);
 
   const root = document.getElementById("root");
   const knownDead = new Set();
@@ -297,13 +365,72 @@
       lastKills[p] = kills[p];
       return `<div class="killbox p${p} ${bump}"><span class="kn">${kills[p]}</span><span class="kname">${esc(playerName(v, p))}</span><span class="kskull">☠</span></div>`;
     };
-    return `<div class="kills">${block("1")}${block("2")}</div>`;
+    return `<div class="kills ${params.get("stack") === "1" ? "stack" : ""}">${block("1")}${block("2")}</div>`;
+  }
+
+  // Graveyard bar: one card per Pokémon that died (a fusion once) with the partner(s)
+  // it dragged along. If both died, the one that died first owns the card.
+  const compact = params.get("compact") === "1";
+  const graveMax = Math.max(1, Math.min(60, Number(params.get("max")) || (compact ? 30 : 8)));
+  function graveHtml(v) {
+    const unit = (m) => [m.id, ...(m.fusedWith || [])].sort().join("+");
+    const dead = ["1", "2"].flatMap((p) => Object.values(v.mons[p]).filter((m) => m.dead).map((m) => ({ p, m })))
+      .sort((a, b) => (a.m.deadAt || 0) - (b.m.deadAt || 0));
+    const shown = new Set();
+    const cards = [];
+    for (const { p, m } of dead) {
+      if (shown.has(`${p}:${unit(m)}`)) continue;
+      shown.add(`${p}:${unit(m)}`);
+      const op = p === "1" ? "2" : "1";
+      const partners = [];
+      const routes = new Set();
+      for (const t of [m.id, ...(m.fusedWith || [])]) {
+        const tm = v.mons[p][t];
+        if (!tm) continue;
+        routes.add(tm.route);
+        const pm = tm.partner ? v.mons[op][tm.partner] : null;
+        if (pm && !shown.has(`${op}:${unit(pm)}`)) { shown.add(`${op}:${unit(pm)}`); partners.push(pm); }
+      }
+      cards.push({ p, op, m, partners, routes: [...routes], t: m.deadAt || 0 });
+    }
+    cards.sort((a, b) => b.t - a.t);
+    const total = cards.length;
+    const list = cards.slice(0, graveMax).map((c) => `<div class="grave p${c.p}">
+      <div class="gpair">
+        <div class="gmon">${spriteHtml(c.m)}<span class="gskull">☠</span></div>
+        ${c.partners.slice(0, 2).map((pm) => `<span class="gchain">⛓</span><div class="gmon partner p${c.op}">${spriteHtml(pm)}</div>`).join("")}
+      </div>
+      <div class="gname">${esc(monName(c.m))}${c.partners.length ? ` <span class="gplus">⛓ ${c.partners.map((x) => esc(monName(x))).join(" + ")}</span>` : ""}</div>
+      <div class="gcause">${esc(c.routes.join(", "))}${c.m.cause ? ` · ${esc(c.m.cause.replace(/^durch /, ""))}` : ""}</div>
+    </div>`).join("");
+    return `<div class="gbar ${compact ? "compact" : ""}"><div class="glabel"><span class="gl1">Friedhof</span><span class="gl2">☠ ${total}</span></div>
+      ${list || `<div class="gempty">Noch niemand gestorben 🍀</div>`}</div>`;
+  }
+
+  // Box bar: living linked pairs where neither Pokémon is in the team (player 1 left, player 2 right)
+  function boxHtml(v) {
+    const pairs = v.routes
+      .filter((r) => r.status === "alive" || r.status === "open")
+      .map((r) => ({ r, a: r.mon[1] ? v.mons[1][r.mon[1]] : null, b: r.mon[2] ? v.mons[2][r.mon[2]] : null }))
+      .filter(({ a, b }) => (a || b) && (!a || !a.inParty) && (!b || !b.inParty) && (!a || a.present) && (!b || b.present));
+    const side = (m, p) => m
+      ? `<div class="gmon p${p}">${spriteHtml(m)}</div>`
+      : `<div class="gmon empty p${p}"><span class="gq">?</span></div>`;
+    const list = pairs.slice(0, graveMax).map(({ r, a, b }) => `<div class="grave boxcard">
+      <div class="gpair">${side(a, "1")}<span class="gchain">⛓</span>${side(b, "2")}</div>
+      <div class="gname">${a ? esc(monName(a)) : "?"} <span class="gplus">⛓</span> ${b ? esc(monName(b)) : "?"}</div>
+      <div class="gcause">${esc(r.name)}${a && b ? ` · Lv. ${a.level} / ${b.level}` : " · wartet auf Partner"}</div>
+    </div>`).join("");
+    return `<div class="gbar ${compact ? "compact" : ""}"><div class="glabel box"><span class="gl1">Box</span><span class="gl2">📦 ${pairs.length}</span></div>
+      ${list || `<div class="gempty">Keine Paare in der Box</div>`}</div>`;
   }
 
   let lastHtml = "";
   function render(v) {
     let html;
-    if (view === "deaths") html = deathsHtml(v);
+    if (view === "box") html = boxHtml(v);
+    else if (view === "grave") html = graveHtml(v);
+    else if (view === "deaths") html = deathsHtml(v);
     else if (view === "both") html = teamHtml(v, "1") + teamHtml(v, "2");
     else html = teamHtml(v, player);
     if (showKills && view !== "deaths") html = `<div class="withkills"><div>${html}</div>${deathsHtml(v)}</div>`;
@@ -311,6 +438,7 @@
     if (html === lastHtml) return;   // nothing visible changed: keep the DOM (no sprite flicker)
     lastHtml = html;
     root.innerHTML = html;
+    fit();
     animateHpBars(root);
   }
 </script>

@@ -470,6 +470,8 @@ function obsTab() {
     ["Team-Leiste Spieler 1 (große Sprites, Partner als Blase)", `${base}&player=1&layout=strip`, "1040 × 250"],
     ["Team-Leiste Spieler 2 (große Sprites, Partner als Blase)", `${base}&player=2&layout=strip`, "1040 × 250"],
     ["Beide Team-Leisten untereinander", `${base}&view=both&layout=strip`, "1040 × 540"],
+    ["Friedhof-Leiste (die letzten 8 Tode mit Partner und Ursache)", `${base}&view=grave`, "1900 × 150"],
+    ["Box-Leiste (lebende Paare im PC, keiner im Team)", `${base}&view=box`, "1900 × 150"],
     ["Team-Leiste Spieler 1 + Kill-Counter rechts daneben", `${base}&player=1&layout=strip&kills=1`, "1300 × 250"],
     ["Team-Leiste Spieler 2 + Kill-Counter rechts daneben", `${base}&player=2&layout=strip&kills=1`, "1300 × 250"],
     ["Team Spieler 1 mit Partnern (nebeneinander)", `${base}&player=1`, "1000 × 340"],
