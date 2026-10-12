@@ -150,12 +150,11 @@ function render() {
     return;
   }
   const v = view;
-  const dead = v.routes.filter((r) => r.status === "dead");
   const allCount = Object.keys(v.mons[1]).length + Object.keys(v.mons[2]).length;
   const tabs = [
     ["teams", "Teams"],
     ["links", "Links", v.routes.length],
-    ["graveyard", "Friedhof", dead.length],
+    ["graveyard", "Friedhof", (v.deaths[1] || 0) + (v.deaths[2] || 0)],
     ["all", "Alle Pokémon", allCount],
     ["events", "Ereignisse"],
     ["obs", "OBS"],
@@ -166,7 +165,7 @@ function render() {
     <div class="top">
       <div class="title"><h1>${esc(v.title)}</h1>
         <span class="conn"><span class="dot ${connState === "live" ? "on" : "warn"}"></span>${connLabel}${key ? ` · Bearbeiten als Spieler ${esc(myPlayer || "?")}` : ""}</span></div>
-      <div class="deathbox"><span class="num">☠ ${v.deaths.pairs}</span><span class="muted small">Tode<br>(gelinkte Paare)</span></div>
+      ${killBox(v)}
     </div>
     <div class="players">${PLAYERS.map((p) => playerInfo(v, p)).join("")}</div>
     <div class="tabs">${tabs.map(([id, label, count]) =>
@@ -174,6 +173,14 @@ function render() {
     <div id="content">${renderTab(v)}</div>`;
   bind();
   animateHpBars(app);
+}
+
+// Kill counter: Pokémon each player has on their conscience (own + dragged partners)
+function killBox(v) {
+  const kills = v.deaths.kills || { 1: 0, 2: 0 };
+  return `<div class="deathbox" title="Eigenes gestorbenes Pokémon + mitgerissene Partner">
+    ${PLAYERS.map((p) => `<div class="kc p${p}"><span class="num">${kills[p]}</span><span class="who">☠ ${esc(playerName(v, p))}</span></div>`).join(`<span class="vs">vs</span>`)}
+  </div>`;
 }
 
 function playerInfo(v, p) {
@@ -190,7 +197,7 @@ function playerInfo(v, p) {
       <span>${online}</span>
       <span>🏅 ${info.badges} Orden</span>
       <span>📍 ${esc(info.map || "?")}${info.inBattle ? " · ⚔ im Kampf" : ""}</span>
-      <span>☠ ${v.deaths[p]} eigene Tode</span>
+      <span>☠ ${v.deaths[p]} eigene Tode · ${(v.deaths.kills || {})[p] || 0} Kills</span>
       <span>Update ${timeAgo(pl.lastUpdate)}</span>
     </div></div>`;
 }
@@ -272,7 +279,8 @@ function routeRow(v, r, context) {
   for (const p of PLAYERS) {
     const m = r.mon[p] ? v.mons[p][r.mon[p]] : null;
     sides[p] = m ? [m] : [];
-    reason[p] = r.failed[p] ? "Begegnung gescheitert" : "keine Begegnung";
+    const info = r.failInfo && r.failInfo[p];
+    reason[p] = r.failed[p] ? `Begegnung gescheitert${info ? ` (${info})` : ""}` : "keine Begegnung";
   }
   return { sides, routes: [r.name], dead: r.status === "dead", reason, context, deadAt: deathTime(v, r) };
 }
@@ -317,7 +325,7 @@ function pairRow(v, row) {
 
 function bigCard(v, mon, context) {
   let note = "";
-  if (mon.dead) note = `<span class="chip bad">☠ tot</span>`;
+  if (mon.dead) note = `<span class="chip bad">☠ tot</span>${mon.cause ? `<div class="cause">${esc(mon.cause)}</div>` : ""}`;
   else if (context === "grave") note = `<span class="chip bad">mit in den Tod gerissen</span>`;
   else if (mon.linkStatus === "dead") note = `<span class="chip bad">muss weg (Partner tot)</span>`;
   else if (!mon.inParty && context === "team") note = `<span class="chip warn">⚠ ${esc(locationLabel(mon))}</span>`;
@@ -338,7 +346,10 @@ function bigCard(v, mon, context) {
 function monCell(v, p, id, route) {
   const mon = id ? v.mons[p][id] : null;
   let html;
-  if (route.failed[p]) html = `<span class="muted">✗ gescheitert</span>`;
+  if (route.failed[p]) {
+    const info = route.failInfo && route.failInfo[p];
+    html = `<span class="muted">✗ gescheitert${info ? ` <span class="small">(${esc(info)})</span>` : ""}</span>`;
+  }
   else if (!mon) html = `<span class="muted">—</span>`;
   else {
     html = `<div class="cellmon">${spriteHtml(mon, "small")}<div class="info">
@@ -354,6 +365,7 @@ function monCell(v, p, id, route) {
       <select data-route="${esc(route.key)}" data-routename="${esc(route.name)}" data-player="${p}">
         <option value="auto" ${choice === "auto" ? "selected" : ""}>Automatisch</option>
         <option value="failed" ${choice === "failed" ? "selected" : ""}>Begegnung gescheitert</option>
+        <option value="notfailed" ${choice === "notfailed" ? "selected" : ""}>Zählt nicht als gescheitert</option>
         ${options.join("")}
       </select>
       ${mon ? `<button class="btn small" data-dead="${mon.dead ? 0 : 1}" data-player="${p}" data-id="${esc(mon.id)}">${mon.dead ? "wiederbeleben" : "☠ als tot markieren"}</button>` : ""}
@@ -371,15 +383,40 @@ function linksTab(v) {
       <td>${monCell(v, "1", r.mon[1], r)}</td><td>${monCell(v, "2", r.mon[2], r)}</td>
       <td><span class="badge ${r.status}">${STATUS_LABEL[r.status]}</span></td></tr>`).join("")}</tbody>
   </table>
-  ${key ? `<p class="muted small">„Automatisch“ nimmt das erste Pokémon, das auf dieser Route gefangen wurde. Über die Auswahl könnt ihr ein anderes Pokémon zuordnen oder die Begegnung als gescheitert markieren.</p>` : ""}
+  ${key ? `<p class="muted small">„Automatisch“ nimmt das erste Pokémon, das auf dieser Route gefangen wurde. Endet der erste wilde Kampf auf einer Route ohne Fang, gilt sie automatisch als gescheitert, außer bei einem Dupe (Kopf oder Körper aus einer schon gefangenen Entwicklungsreihe). Über die Auswahl könnt ihr ein anderes Pokémon zuordnen, eine Begegnung als gescheitert markieren oder mit „Zählt nicht als gescheitert“ eine automatische Erkennung aufheben.</p>` : ""}
   </div>`;
 }
 
+// One row per Pokémon that died (a fusion once), with every partner it dragged along.
+// If both partners died, the one that died first owns the row.
 function graveyardTab(v) {
-  const rows = v.routes
-    .filter((r) => r.status === "dead")
-    .map((r) => routeRow(v, r, "grave"))
-    .sort((a, b) => b.deadAt - a.deadAt);   // most recent first
+  const unit = (m) => [m.id, ...(m.fusedWith || [])].sort().join("+");
+  const dead = PLAYERS.flatMap((p) => Object.values(v.mons[p]).filter((m) => m.dead).map((m) => ({ p, m })))
+    .sort((a, b) => (a.m.deadAt || 0) - (b.m.deadAt || 0));
+  const shown = new Set();
+  const rows = [];
+  for (const { p, m } of dead) {
+    if (shown.has(`${p}:${unit(m)}`)) continue;
+    shown.add(`${p}:${unit(m)}`);
+    const op = p === "1" ? "2" : "1";
+    const partners = [];
+    const routes = [];
+    for (const t of tagsOf(m)) {
+      const tm = v.mons[p][t];
+      if (!tm) continue;
+      routes.push(tm.route);
+      const pm = tm.partner ? v.mons[op][tm.partner] : null;
+      if (pm && !shown.has(`${op}:${unit(pm)}`)) {
+        shown.add(`${op}:${unit(pm)}`);
+        partners.push(pm);
+      }
+    }
+    rows.push({
+      sides: { [p]: [m], [op]: partners }, routes: [...new Set(routes)], dead: true,
+      reason: { [op]: "kein Partner" }, context: "grave", deadAt: m.deadAt || 0,
+    });
+  }
+  rows.sort((a, b) => b.deadAt - a.deadAt);   // most recent first
   return pairList(v, rows, "Noch niemand gestorben. Weiter so! 🍀");
 }
 
@@ -418,7 +455,7 @@ function obsTab() {
     ["Team Spieler 1 (untereinander, für den Rand)", `${base}&player=1&layout=column`, "300 × 1000"],
     ["Team Spieler 2 (untereinander, für den Rand)", `${base}&player=2&layout=column`, "300 × 1000"],
     ["Beide Teams (nur Teams, ohne Partner-Zeile)", `${base}&view=both&partner=0`, "1000 × 420"],
-    ["Todeszähler", `${base}&view=deaths`, "420 × 100"],
+    ["Kill-Counter (wer hat wie viele auf dem Gewissen)", `${base}&view=deaths`, "460 × 110"],
   ];
   return `<div class="panel stack">
     <p>In OBS: <b>Quelle hinzufügen → Browser</b>, die URL einfügen, Breite/Höhe wie angegeben setzen. Der Hintergrund ist durchsichtig.

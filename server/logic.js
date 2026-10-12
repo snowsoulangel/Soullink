@@ -4,10 +4,11 @@
 
 export const PLAYERS = ["1", "2"];
 const MAX_EVENTS = 300;
+const DEFAULT_TITLE = "Soul Link";
 
 export function emptyRoom(keys, now) {
   return {
-    meta: { created: now, keys, title: "Soul Link" },
+    meta: { created: now, keys, title: DEFAULT_TITLE },
     players: { 1: emptyPlayer(), 2: emptyPlayer() },
     manual: { routes: {}, dead: {}, ignore: {} },
     events: [],
@@ -15,7 +16,7 @@ export function emptyRoom(keys, now) {
 }
 
 function emptyPlayer() {
-  return { info: null, party: [], registry: {}, lastUpdate: 0, lastSeen: 0 };
+  return { info: null, party: [], registry: {}, fails: {}, lastUpdate: 0, lastSeen: 0 };
 }
 
 export function other(player) {
@@ -30,9 +31,33 @@ function displayName(entry) {
   return entry.name || entry.speciesName || "?";
 }
 
-function pushEvent(room, player, type, text, now) {
-  room.events.push({ t: now, player, type, text });
+function pushEvent(room, player, type, text, now, mon = null) {
+  room.events.push(mon ? { t: now, player, type, text, mon } : { t: now, player, type, text });
   if (room.events.length > MAX_EVENTS) room.events.splice(0, room.events.length - MAX_EVENTS);
+}
+
+// Cause of death as sent by the mod, reduced to known fields.
+function cleanCause(c) {
+  const s = (v) => (v === undefined || v === null ? undefined : String(v).slice(0, 60));
+  return {
+    by: s(c.by), byLevel: Number(c.by_level) || undefined, move: s(c.move),
+    trainer: s(c.trainer), wild: !!c.wild, cause: s(c.cause), map: s(c.map),
+  };
+}
+
+export function causeText(c) {
+  if (!c) return null;
+  if (!c.by) return `durch ${c.cause || "Unbekannt"}`;
+  let text = `durch ${c.by}${c.byLevel ? ` (Lv. ${c.byLevel})` : ""}`;
+  if (c.move) text += ` mit ${c.move}`;
+  if (c.trainer) text += ` von ${c.trainer}`;
+  else if (c.wild) text += " (wild)";
+  return text;
+}
+
+function deathText(playerName, e) {
+  const cause = causeText(e.deathCause);
+  return `☠ ${playerName}: ${displayName(e)} (Lv. ${e.level}, ${e.route}) ist gestorben${cause ? ` – ${cause}` : ""}`;
 }
 
 // Applies a snapshot written by the game mod. Returns true if something changed.
@@ -82,6 +107,8 @@ export function applySnapshot(room, player, snap, now) {
         shiny: !!m.shiny,
         gender: m.gender,
         fusion: !!m.fusion,
+        dex: Number(m.dex) || null,
+        families: Array.isArray(m.families) ? m.families.slice(0, 4).map((x) => String(x).slice(0, 40)) : e.families || [],
         head: m.head || null,
         body: m.body || null,
         // exported game sprite; keep the last one while a new variant is not exported yet
@@ -106,10 +133,17 @@ export function applySnapshot(room, player, snap, now) {
         }
       }
 
+      const primary = id === ids[0];   // a fusion carries several tags: one event per Pokémon
+      if (!e.deathCause && m.death && typeof m.death === "object") {
+        e.deathCause = cleanCause(m.death);
+        // the cause often arrives a moment after HP hit 0: complete the event text
+        const ev = primary && e.dead && room.events.find((x) => x.type === "death" && x.player === player && x.mon === id);
+        if (ev) ev.text = deathText(playerName, e);
+      }
       if (Number(m.hp) <= 0 && !e.dead) {
         e.dead = true;
         e.deadAt = now;
-        pushEvent(room, player, "death", `☠ ${playerName}: ${displayName(e)} (Lv. ${e.level}, ${e.route}) ist gestorben`, now);
+        if (primary) pushEvent(room, player, "death", deathText(playerName, e), now, id);
       }
     }
   }
@@ -125,6 +159,7 @@ export function applySnapshot(room, player, snap, now) {
   if (firstSync && newCount > 0) {
     pushEvent(room, player, "sync", `${playerName} ist verbunden (${newCount} Pokémon übernommen)`, now);
   }
+  applyFails(room, player, playerName, snap.fails, now, firstSync);
 
   p.party = (snap.party || []).map((m) => (m.tags && m.tags[0] ? String(m.tags[0].id) : null)).filter(Boolean);
   p.info = {
@@ -141,6 +176,49 @@ export function applySnapshot(room, player, snap, now) {
   return true;
 }
 
+// Wild battles that ended without a catch. Each one gets a verdict once, when it
+// first arrives:
+//   "counts": first encounter on that route -> the route failed for this player
+//   "dupe":   head or body belongs to an evolution line one of you already caught
+//             -> dupe clause, the player may try again
+//   "late":   the route already had an encounter -> nothing happens
+function applyFails(room, player, playerName, fails, now, quiet) {
+  const p = room.players[player];
+  if (!p.fails) p.fails = {};
+  if (!Array.isArray(fails)) return;
+  for (const f of fails) {
+    if (!f || !f.id || p.fails[f.id]) continue;
+    const seq = Number(f.seq) || 0;
+    const route = String(f.route || "Unbekannt").slice(0, 80);
+    const key = routeKey(route);
+    const wild = (Array.isArray(f.wild) ? f.wild : []).slice(0, 3).map((w) => ({
+      name: String((w && w.name) || "?").slice(0, 40),
+      families: (Array.isArray(w && w.families) ? w.families : []).slice(0, 4).map((x) => String(x).slice(0, 40)),
+    }));
+    const own = Object.values(p.registry);
+    const caughtBefore = own.some((e) => e.routeKey === key && e.seq < seq);
+    const failedBefore = Object.values(p.fails).some((x) => x.routeKey === key && x.verdict === "counts");
+    // evolution lines caught so far by either player (own Pokémon only those caught before this battle)
+    const families = new Set();
+    for (const e of own) if (e.seq < seq) (e.families || []).forEach((x) => families.add(x));
+    for (const e of Object.values(room.players[other(player)].registry)) (e.families || []).forEach((x) => families.add(x));
+    const dupeOf = wild.find((w) => w.families.some((x) => families.has(x)));
+    let verdict = "counts";
+    if (caughtBefore || failedBefore) verdict = "late";
+    else if (dupeOf) verdict = "dupe";
+    p.fails[f.id] = { id: String(f.id), seq, route, routeKey: key, result: String(f.result || "gescheitert").slice(0, 20), wild, verdict, t: now };
+    if (quiet) continue;
+    const names = wild.map((w) => w.name).join(" / ") || "?";
+    if (verdict === "counts") pushEvent(room, player, "fail", `✗ ${playerName}: Begegnung auf ${route} gescheitert (${p.fails[f.id].result}: ${names})`, now);
+    if (verdict === "dupe") pushEvent(room, player, "dupe", `↻ ${playerName}: ${dupeOf.name} auf ${route} ist ein Dupe – darf nochmal ins Gras`, now);
+  }
+}
+
+export function failText(f) {
+  const names = (f.wild || []).map((w) => w.name).join(" / ");
+  return `${f.result}${names ? `: ${names}` : ""}`;
+}
+
 export function isDead(room, player, entry) {
   const override = room.manual.dead[`${player}:${entry.id}`];
   return typeof override === "boolean" ? override : !!entry.dead;
@@ -154,7 +232,7 @@ export function computeRoutes(room) {
   const getRoute = (key, name, firstSeen) => {
     let r = routes.get(key);
     if (!r) {
-      r = { key, name, firstSeen, seq: Infinity, claims: { 1: null, 2: null }, failed: { 1: false, 2: false } };
+      r = { key, name, firstSeen, seq: Infinity, claims: { 1: null, 2: null }, failed: { 1: false, 2: false }, failInfo: { 1: null, 2: null } };
       routes.set(key, r);
     }
     if (firstSeen < r.firstSeen) r.firstSeen = firstSeen;
@@ -166,7 +244,7 @@ export function computeRoutes(room) {
     const manualAssigned = new Set();
     for (const [key, choice] of Object.entries(room.manual.routes)) {
       const value = choice && choice[player];
-      if (!value || value === "auto") continue;
+      if (!value || value === "auto" || value === "notfailed") continue;
       if (value === "failed") {
         const r = getRoute(key, choice.name || key, Infinity);
         r.failed[player] = true;
@@ -180,12 +258,24 @@ export function computeRoutes(room) {
       claimOf[player][e.id] = key;
       manualAssigned.add(e.id);
     }
+    // failed encounters detected by the mod (unless corrected by hand)
+    const autoFailed = new Set();
+    for (const f of Object.values(room.players[player].fails || {})) {
+      if (f.verdict !== "counts") continue;
+      const value = room.manual.routes[f.routeKey] && room.manual.routes[f.routeKey][player];
+      if (value && value !== "auto") continue;
+      const r = getRoute(f.routeKey, f.route, f.t);
+      r.failed[player] = true;
+      r.failInfo[player] = failText(f);
+      autoFailed.add(f.routeKey);
+    }
     const entries = Object.values(reg).sort((a, b) => a.firstSeen - b.firstSeen || a.seq - b.seq);
     for (const e of entries) {
       if (manualAssigned.has(e.id)) continue;
       if (room.manual.ignore[`${player}:${e.id}`]) continue;
+      if (autoFailed.has(e.routeKey)) continue;   // caught after the failed encounter: an extra
       const choice = room.manual.routes[e.routeKey];
-      const overridden = choice && choice[player] && choice[player] !== "auto";
+      const overridden = choice && choice[player] && !["auto", "notfailed"].includes(choice[player]);
       const r = getRoute(e.routeKey, e.route, e.firstSeen);
       if (overridden || r.claims[player]) continue;
       r.claims[player] = e.id;
@@ -214,6 +304,7 @@ function monView(room, player, e) {
     shiny: e.shiny,
     gender: e.gender,
     fusion: e.fusion,
+    dex: e.dex || null,
     head: e.head,
     body: e.body,
     sprite: e.sprite || null,
@@ -225,6 +316,7 @@ function monView(room, player, e) {
     inParty: false,
     dead: isDead(room, player, e),
     deadAt: e.deadAt,
+    cause: causeText(e.deathCause),
     ignored: !!room.manual.ignore[`${player}:${e.id}`],
   };
 }
@@ -260,6 +352,7 @@ export function buildView(room, now) {
         status,
         mon: { 1: r.claims[1], 2: r.claims[2] },
         failed: { 1: r.failed[1], 2: r.failed[2] },
+        failInfo: r.failInfo,
         choice: room.manual.routes[r.key] || null,
       };
     });
@@ -277,9 +370,10 @@ export function buildView(room, now) {
     }
   }
 
-  const deaths = { pairs: 0, 1: 0, 2: 0 };
+  const deaths = { pairs: 0, 1: 0, 2: 0, kills: countKills(mons) };
   for (const r of routeList) if (r.status === "dead") deaths.pairs++;
-  for (const player of PLAYERS) for (const m of Object.values(mons[player])) if (m.dead) deaths[player]++;
+  // own Pokémon that died (a fusion counts once)
+  for (const player of PLAYERS) deaths[player] = deadUnits(mons, player).length;
 
   const players = {};
   for (const player of PLAYERS) {
@@ -294,7 +388,7 @@ export function buildView(room, now) {
   }
 
   return {
-    title: room.meta.title,
+    title: runTitle(room),
     created: room.meta.created,
     now,
     players,
@@ -305,6 +399,56 @@ export function buildView(room, now) {
   };
 }
 
+// A "unit" is one Pokémon as it exists in the game: a fusion carries several tags.
+export function unitKey(m) {
+  return [m.id, ...(m.fusedWith || [])].sort().join("+");
+}
+
+function deadUnits(mons, player) {
+  const seen = new Set();
+  const list = [];
+  for (const m of Object.values(mons[player])) {
+    if (!m.dead || seen.has(unitKey(m))) continue;
+    seen.add(unitKey(m));
+    list.push(m);
+  }
+  return list;
+}
+
+// Kill counter: whoever loses a Pokémon first is charged with it and with every
+// partner Pokémon it drags into death. Each Pokémon is counted once.
+export function countKills(mons) {
+  const kills = { 1: 0, 2: 0 };
+  const counted = new Set();
+  const deaths = PLAYERS.flatMap((p) => deadUnits(mons, p).map((m) => ({ p, m })))
+    .sort((a, b) => (a.m.deadAt || 0) - (b.m.deadAt || 0));
+  for (const { p, m } of deaths) {
+    const key = `${p}:${unitKey(m)}`;
+    if (counted.has(key)) continue;
+    counted.add(key);
+    kills[p]++;
+    const op = other(p);
+    for (const t of [m.id, ...(m.fusedWith || [])]) {
+      const tm = mons[p][t];
+      const pm = tm && tm.partner ? mons[op][tm.partner] : null;
+      if (!pm) continue;
+      const pkey = `${op}:${unitKey(pm)}`;
+      if (counted.has(pkey)) continue;
+      counted.add(pkey);
+      kills[p]++;
+    }
+  }
+  return kills;
+}
+
+// Title of the run: set by hand, otherwise built from the trainer names ("Artur & Tim").
+export function runTitle(room) {
+  if (room.meta.titleSet || room.meta.title !== DEFAULT_TITLE) return room.meta.title;
+  const names = PLAYERS.map((p) => room.players[p].info && room.players[p].info.name).filter(Boolean);
+  if (!names.length) return DEFAULT_TITLE;
+  return names.sort((a, b) => a.localeCompare(b, "de")).join(" & ");
+}
+
 // Manual corrections from the dashboard. Returns an error string or null.
 export function applyAction(room, actor, action, now) {
   const actorName = (room.players[actor].info && room.players[actor].info.name) || `Spieler ${actor}`;
@@ -313,6 +457,7 @@ export function applyAction(room, actor, action, now) {
       const title = String(action.title || "").slice(0, 80).trim();
       if (!title) return "Titel fehlt";
       room.meta.title = title;
+      room.meta.titleSet = true;   // keep it even if it equals the default
       return null;
     }
     case "setRoute": {
@@ -320,13 +465,14 @@ export function applyAction(room, actor, action, now) {
       if (!PLAYERS.includes(player)) return "Ungültiger Spieler";
       const key = routeKey(action.route);
       const value = String(action.value || "auto");
-      if (value !== "auto" && value !== "failed" && !room.players[player].registry[value]) return "Pokémon unbekannt";
+      if (!["auto", "failed", "notfailed"].includes(value) && !room.players[player].registry[value]) return "Pokémon unbekannt";
       const choice = room.manual.routes[key] || { name: action.routeName || action.route };
       choice[player] = value;
       const isAuto = (v) => !v || v === "auto";
       if (isAuto(choice[1]) && isAuto(choice[2])) delete room.manual.routes[key];
       else room.manual.routes[key] = choice;
       if (value === "failed") pushEvent(room, player, "failed", `${choice.name}: Begegnung von Spieler ${player} als gescheitert markiert (${actorName})`, now);
+      if (value === "notfailed") pushEvent(room, player, "failed", `${choice.name}: Begegnung von Spieler ${player} zählt doch nicht als gescheitert (${actorName})`, now);
       return null;
     }
     case "setDead": {

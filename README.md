@@ -5,6 +5,9 @@ Live-Tracking für Soul-Link-Runs zu zweit:
 - **Automatische Links:** Fängst du auf Route 1 ein Rattfratz und dein Kumpel dort ein Pikachu, werden die beiden automatisch verlinkt.
 - **Live-KP, Level und Team** im OBS-Overlay, bei jedem Pokémon auch mit seinem Partner.
 - **Tode werden automatisch erkannt.** Fällt ein Pokémon auf 0 KP, ist es tot. Der Partner wird markiert, und der Todeszähler zählt hoch.
+- **Todesursache:** Die Mod merkt sich, von welchem Pokémon (Level, Attacke) und welchem Trainer ein Pokémon besiegt wurde, bzw. Gift/Verbrennung.
+- **Kill-Counter:** Wer ein Pokémon verliert, bekommt es und jeden mitgerissenen Partner angerechnet (jedes Pokémon einmal, eine Fusion zählt als ein Pokémon).
+- **Titel:** Die Run-Seite heißt automatisch nach den Trainernamen aus dem Spiel, z. B. „Artur & Tim“.
 - **Run-Seite** mit Teams, allen Links, Friedhof und Ereignis-Log, auch für Zuschauer.
 - **Fusionen:** Ein fusioniertes Pokémon behält beide Links. Nach dem Entfusionieren bekommen beide Teile ihren Link zurück.
 - **Echte Sprites aus dem Spiel:** Overlay und Run-Seite zeigen genau den Sprite, den das Spiel gerade anzeigt, inklusive gewähltem Alt-Sprite und Shiny-Färbung.
@@ -128,6 +131,8 @@ Weitere Optionen: `&scale=0.8` zum Verkleinern, `&partner=0` ohne Partner-Zeile 
 
 - Die Mod gibt jedem Pokémon beim ersten Sehen eine unsichtbare Markierung mit seiner **Fang-Route**. Das ist der Ort, den das Spiel auch in der Pokémon-Übersicht anzeigt.
 - **Das erste Pokémon pro Route** zählt als Begegnung. Haben beide Spieler auf derselben Route ihre Begegnung, sind die zwei gelinkt.
+- **Gescheiterte Begegnungen werden automatisch erkannt:** Endet der erste wilde Kampf auf einer Route ohne Fang (besiegt, geflohen, verloren), ist die Route für diesen Spieler gescheitert. Später dort gefangene Pokémon zählen als „Zusatz“.
+- **Dupe-Klausel:** Gehört Kopf oder Körper des wilden Pokémon zu einer Entwicklungsreihe, die einer von euch schon gefangen hat, zählt der Kampf nicht und man darf nochmal ins Gras.
 - Weitere Pokémon von einer schon belegten Route, etwa Geschenke oder Dupes, gelten als **„Zusatz“** und sind nicht gelinkt.
 - **Tod:** Fällt ein Pokémon auf 0 KP, ist es tot. Das bleibt so, auch wenn es danach geheilt wird. Die Verbindung zum Partner wird als tot markiert. Auf der Run-Seite steht dann beim Partner **„muss weg (Partner tot)“**.
 - **Partner nicht im Team:** Ist das Pokémon im Team, sein Partner aber in der Box, erscheint ein ⚠-Hinweis.
@@ -137,7 +142,7 @@ Weitere Optionen: `&scale=0.8` zum Verkleinern, `&partner=0` ohne Partner-Zeile 
 
 Auf der Run-Seite unter **Einstellungen** einmal den eigenen `KEY` eintragen. Danach geht Folgendes:
 
-- **Links:** pro Route ein anderes Pokémon zuordnen, zum Beispiel wenn ein Gebäude anders heißt als die Route, oder **„Begegnung gescheitert“** wählen, wenn das Pokémon geflohen oder besiegt worden ist. Das kann die Mod nicht erkennen, weil es nicht im Spielstand steht.
+- **Links:** pro Route ein anderes Pokémon zuordnen, zum Beispiel wenn ein Gebäude anders heißt als die Route, **„Begegnung gescheitert“** wählen oder eine automatisch erkannte gescheiterte Begegnung mit **„Zählt nicht als gescheitert“** aufheben.
 - **Tod korrigieren:** Pokémon als tot markieren oder wiederbeleben.
 - **Alle Pokémon:** Zusatz-Pokémon auf **„nicht zählen“** setzen. Pokémon, die es nicht mehr gibt, könnt ihr ganz entfernen.
 
@@ -150,7 +155,7 @@ Auf der Run-Seite unter **Einstellungen** einmal den eigenen `KEY` eintragen. Da
 | Fenster zeigt „Warte auf das Spiel …“ | Ist der Mod-Ordner richtig kopiert (siehe Baum oben)? Ist ein Spielstand geladen? Im Titelbildschirm wird noch nichts geschrieben. |
 | „falscher Schlüssel oder Spieler“ | `config.txt` prüfen. Jeder Spieler braucht seinen eigenen Block, `PLAYER=1` bzw. `PLAYER=2`. |
 | `SoulLink/error.log` existiert | Die Mod hatte einen Fehler. Das Spiel läuft weiter, aber schickt die Datei bitte zur Fehlersuche. |
-| Overlay zeigt nicht den Sprite aus dem Spiel | Die Mod speichert den Sprite, den das Spiel zeigt (gewählter Alt-Sprite, Custom/Autogen, Shiny), in `SoulLink/sprites`, das Hilfsprogramm lädt ihn hoch. Team-Pokémon kommen außerhalb von Kämpfen nach ein paar Sekunden dran, PC-Pokémon erst, wenn das Spiel ihren Sprite schon einmal geladen hat. Bis dahin zeigt das Overlay Sprites von `play.pokemonshowdown.com` (Fusionen als Kopf über Körper). Hüte von Pokémon werden nicht mit angezeigt. |
+| Overlay zeigt nicht den Sprite aus dem Spiel | Die Mod speichert den Sprite, den das Spiel zeigt (gewählter Alt-Sprite, Custom/Autogen, Shiny), in `SoulLink/sprites`, das Hilfsprogramm lädt ihn hoch. Team-Pokémon kommen außerhalb von Kämpfen nach ein paar Sekunden dran, PC-Pokémon erst, wenn das Spiel ihren Sprite schon einmal geladen hat. Bis dahin zeigt das Overlay den Sprite aus dem offiziellen Infinite-Fusion-Sprite-Archiv (nur Custom-Sprites; fehlt dort einer, erscheint ein „?“). Hüte von Pokémon werden nicht mit angezeigt. |
 | Spielstand neu angefangen | Run-Seite → Einstellungen → Gefahrenzone → „Spieler X zurücksetzen“, oder einfach einen neuen Run erstellen. |
 
 ### Kostenlos-Limits

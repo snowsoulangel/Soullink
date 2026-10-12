@@ -6,43 +6,50 @@ export function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-// Infinite Fusion species symbols (e.g. "NIDORANfE", "HOOH") -> Showdown sprite ids.
-export function spriteId(symbol) {
-  const s = String(symbol || "");
-  const special = { NIDORANfE: "nidoranf", NIDORANmA: "nidoranm" };
-  if (special[s]) return special[s];
-  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
+// Only Infinite Fusion sprites are shown:
+//   1. the sprite exported from the game (exactly what the player sees)
+//   2. the sprite from the official Infinite Fusion sprite archive (by dex number)
+//   3. a neutral "?" placeholder
+const SPRITE_ARCHIVE = "https://bitbucket.org/infinitefusionsprites/customsprites/raw/main";
 
-export function spriteUrl(symbol, shiny = false) {
-  return `https://play.pokemonshowdown.com/sprites/${shiny ? "gen5-shiny" : "gen5"}/${spriteId(symbol)}.png`;
-}
-
-// The sprite exported from the game (exactly what the player sees), if any.
 export function gameSpriteUrl(mon) {
   const room = params.get("room");
   if (!mon || !mon.sprite || !room) return null;
   return `/api/rooms/${encodeURIComponent(room)}/sprite?key=${encodeURIComponent(mon.sprite)}`;
 }
 
-// Game sprite if available; otherwise Showdown sprites (head + body for fusions).
-export function spriteHtml(mon, cls = "") {
-  if (!mon) return `<div class="sprite ${cls} empty"></div>`;
-  const fallback = showdownSpriteHtml(mon, cls);
-  const own = gameSpriteUrl(mon);
-  if (!own) return fallback;
-  const title = mon.fusion && mon.head && mon.body ? ` title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}"` : "";
-  // on error the Showdown version replaces this element
-  return `<div class="sprite game ${cls}"${title}><img src="${esc(own)}" alt="" decoding="sync" data-fallback="${esc(fallback)}" onerror="this.parentNode.outerHTML=this.dataset.fallback"></div>`;
+export function archiveSpriteUrl(mon) {
+  if (!mon) return null;
+  if (mon.fusion) {
+    const head = mon.head && Number(mon.head.num);
+    const body = mon.body && Number(mon.body.num);
+    return head && body ? `${SPRITE_ARCHIVE}/CustomBattlers/${head}.${body}.png` : null;
+  }
+  return mon.dex ? `${SPRITE_ARCHIVE}/Other/BaseSprites/${Number(mon.dex)}.png` : null;
 }
 
-function showdownSpriteHtml(mon, cls) {
-  const img = (sym, extra = "") =>
-    `<img src="${spriteUrl(sym, mon.shiny)}" alt="" decoding="sync" class="${extra}" onerror="if(this.dataset.f){this.style.visibility='hidden'}else{this.dataset.f=1;this.src='${spriteUrl(sym, false)}'}">`;
-  if (mon.fusion && mon.head && mon.body) {
-    return `<div class="sprite fusion ${cls}" title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}">${img(mon.body.species, "body")}${img(mon.head.species, "head")}</div>`;
+// Tries the next source when an image fails; ends with the placeholder.
+window.soullinkSpriteError = (img) => {
+  const rest = (img.dataset.next || "").split("|").filter(Boolean);
+  if (rest.length) {
+    img.dataset.next = rest.slice(1).join("|");
+    img.parentNode.classList.toggle("archive", true);
+    img.src = rest[0];
+  } else {
+    img.parentNode.classList.add("nosprite");
+    img.remove();
   }
-  return `<div class="sprite ${cls}">${img(mon.species)}</div>`;
+};
+
+export function spriteHtml(mon, cls = "") {
+  if (!mon) return `<div class="sprite ${cls} empty"></div>`;
+  const own = gameSpriteUrl(mon);
+  const archive = archiveSpriteUrl(mon);
+  const title = mon.fusion && mon.head && mon.body ? ` title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}"` : "";
+  const first = own || archive;
+  if (!first) return `<div class="sprite game nosprite ${cls}"${title}></div>`;
+  const next = own && archive ? archive : "";
+  return `<div class="sprite game ${own ? "" : "archive"} ${cls}"${title}><img src="${esc(first)}" alt="" decoding="sync" data-next="${esc(next)}" onerror="soullinkSpriteError(this)"></div>`;
 }
 
 export function hpPercent(mon) {

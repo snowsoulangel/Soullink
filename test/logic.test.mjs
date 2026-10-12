@@ -122,3 +122,73 @@ test("first sync does not spam catch events", () => {
   assert.equal(room.events.length, 1);
   assert.match(room.events[0].text, /2 Pokémon/);
 });
+
+test("cause of death completes the event and the kill counter charges both Pokémon", () => {
+  const room = setup();
+  applySnapshot(room, "1", snap([mon([tag("a1", 1, "Pallet Town")], "BULBASAUR", { hp: 0 })]), 2000);
+  let v = buildView(room, 2000);
+  assert.ok(v.events.some((e) => e.type === "death" && !e.text.includes("durch")));
+  applySnapshot(room, "1", snap([mon([tag("a1", 1, "Pallet Town")], "BULBASAUR", {
+    hp: 0, death: { by: "Taubsi", by_level: 7, move: "Tackle", trainer: "Käfersammler Rick", wild: false },
+  })]), 2500);
+  v = buildView(room, 2500);
+  const ev = v.events.filter((e) => e.type === "death");
+  assert.equal(ev.length, 1);
+  assert.ok(ev[0].text.endsWith("durch Taubsi (Lv. 7) mit Tackle von Käfersammler Rick"));
+  assert.equal(v.mons[1].a1.cause, "durch Taubsi (Lv. 7) mit Tackle von Käfersammler Rick");
+  assert.deepEqual(v.deaths.kills, { 1: 2, 2: 0 });   // own Pokémon + dragged partner
+});
+
+test("a dying fusion is one death but charges every partner once", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  applySnapshot(room, "1", snap([
+    mon([tag("a1", 1, "Route 1")], "PIDGEY"), mon([tag("a2", 2, "Route 2")], "RATTATA", { slot: 1 })]), 1000);
+  applySnapshot(room, "2", snap([
+    mon([tag("b1", 1, "Route 1")], "ZUBAT"), mon([tag("b2", 2, "Route 2")], "EKANS", { slot: 1 })], [], "Gary"), 1000);
+  // player 1 fuses a1+a2, player 2 keeps two separate partners; the fusion dies
+  applySnapshot(room, "1", snap([mon([tag("a1", 1, "Route 1"), tag("a2", 2, "Route 2")], "B16H19", { fusion: true, hp: 0 })]), 2000);
+  const v = buildView(room, 2000);
+  assert.equal(v.deaths[1], 1);
+  assert.equal(v.deaths.pairs, 2);
+  assert.deepEqual(v.deaths.kills, { 1: 3, 2: 0 });
+  assert.equal(v.events.filter((e) => e.type === "death").length, 1);
+});
+
+test("title is built from the trainer names unless set by hand", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  applySnapshot(room, "1", snap([], [], "Tim"), 1000);
+  applySnapshot(room, "2", snap([], [], "Artur"), 1000);
+  assert.equal(buildView(room, 1000).title, "Artur & Tim");
+  applyAction(room, "1", { type: "setTitle", title: "Unser Run" }, 1100);
+  assert.equal(buildView(room, 1100).title, "Unser Run");
+});
+
+test("failed wild encounters: first one counts, dupes and later ones do not", () => {
+  const room = setup();   // a1 BULBASAUR (Pallet Town) / b1 CHARMANDER
+  room.players[1].registry.a1.families = ["BULBASAUR"];
+  const fail = (id, seq, route, families, result = "geflohen") =>
+    ({ id, seq, route, result, wild: [{ name: "Wild", families }] });
+  applySnapshot(room, "1", { ...snap([mon([tag("a1", 1, "Pallet Town")], "BULBASAUR", { families: ["BULBASAUR"] })]),
+    fails: [
+      fail("f2", 2, "Route 1", ["PIDGEY", "RATTATA"]),           // counts
+      fail("f3", 3, "Route 1", ["ZUBAT"]),                       // route already failed -> late
+      fail("f4", 4, "Route 2", ["BULBASAUR", "CATERPIE"]),       // dupe (Bulbasaur line caught)
+      fail("f5", 5, "Pallet Town", ["WEEDLE"]),                  // route already has a catch -> late
+    ] }, 2000);
+  const verdicts = Object.fromEntries(Object.values(room.players[1].fails).map((f) => [f.id, f.verdict]));
+  assert.deepEqual(verdicts, { f2: "counts", f3: "late", f4: "dupe", f5: "late" });
+  let v = buildView(room, 2000);
+  const r1 = v.routes.find((r) => r.name === "Route 1");
+  assert.equal(r1.status, "failed");
+  assert.equal(r1.failInfo[1], "geflohen: Wild");
+  assert.ok(!v.routes.find((r) => r.name === "Route 2"));
+  assert.ok(v.events.some((e) => e.type === "dupe"));
+  // a catch on Route 1 after the failure is only an extra
+  applySnapshot(room, "1", snap([mon([tag("a1", 1, "Pallet Town")], "BULBASAUR"), mon([tag("a6", 6, "Route 1")], "PIDGEY", { slot: 1 })]), 3000);
+  v = buildView(room, 3000);
+  assert.equal(v.mons[1].a6.extra, true);
+  // corrected by hand
+  applyAction(room, "1", { type: "setRoute", route: "Route 1", routeName: "Route 1", player: "1", value: "notfailed" }, 4000);
+  v = buildView(room, 4000);
+  assert.equal(v.routes.find((r) => r.name === "Route 1").mon[1], "a6");
+});

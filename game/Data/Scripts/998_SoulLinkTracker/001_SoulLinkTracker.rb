@@ -10,7 +10,7 @@
 # so links survive fusing, unfusing and evolving.
 #==============================================================================
 module SoulLinkTracker
-  VERSION        = "1.1.0"
+  VERSION        = "1.3.0"
   OUTPUT_DIR     = "SoulLink"
   OUTPUT_FILE    = "SoulLink/state.json"
   TEMP_FILE      = "SoulLink/state.json.tmp"
@@ -28,6 +28,7 @@ module SoulLinkTracker
   @last_json    = nil
   @last_trainer = nil
   @error_logged = false
+  @battle       = nil     # battle in progress (for causes of death)
   @sprite_files = {}      # sprite keys that already exist as PNG
   @sprite_failed = {}     # Pokémon whose sprite could not be drawn
   @sprites_off  = false   # set when this game build cannot save bitmaps
@@ -282,6 +283,91 @@ module SoulLinkTracker
     log_error(e)
   end
 
+  #----------------------------------------------------------------------------
+  # Causes of death: who knocked out one of the player's Pokémon, saved with
+  # the Pokémon (@soullink_death) the first time it faints.
+  #----------------------------------------------------------------------------
+  STATUS_CAUSES = { :POISON => "Gift", :BURN => "Verbrennung" }
+
+  def current_battle=(battle)
+    @battle = battle
+  end
+
+  def death_of(pkmn)
+    return pkmn.instance_variable_get(:@soullink_death)
+  end
+
+  # need_attacker: only record if a foe hit it (used while HP is still animating;
+  # the faint hook records status/other causes afterwards)
+  def record_death(battler, need_attacker = false)
+    pkmn = battler.pokemon
+    return if !pkmn || death_of(pkmn) || !battler.pbOwnedByPlayer?
+    battle = battler.battle
+    idx = battler.lastFoeAttacker.last
+    foe = idx ? battle.battlers[idx] : nil
+    foe = nil if foe && !foe.pokemon
+    return if need_attacker && !foe
+    info = { "wild" => battle.wildBattle? ? true : false }
+    if foe
+      info["by"] = utf8(foe.pokemon.speciesName)
+      info["by_level"] = foe.level
+      move = foe.lastMoveUsed
+      info["move"] = utf8(GameData::Move.get(move).name) if move rescue nil
+      if battle.trainerBattle?
+        owner = battle.pbGetOwnerFromBattlerIndex(idx) rescue nil
+        info["trainer"] = utf8(owner.full_name) if owner rescue nil
+      end
+    else
+      info["cause"] = STATUS_CAUSES[battler.status] || "Sonstiges"
+    end
+    info["map"] = utf8(pbGetMapNameFromId($game_map.map_id)) if $game_map rescue nil
+    pkmn.instance_variable_set(:@soullink_death, info)
+  end
+
+  #----------------------------------------------------------------------------
+  # Failed encounters: a wild battle that ends without a catch. The server
+  # decides whether it counts (first encounter on the route, dupe clause).
+  #----------------------------------------------------------------------------
+  BATTLE_RESULTS = { 1 => "besiegt", 2 => "verloren", 3 => "geflohen" }
+  MAX_FAILS = 100
+
+  # Evolution lines (base stage) of a Pokémon; both parts for a fusion
+  def families_of(pkmn)
+    parts = fusion?(pkmn) ? [get_head_number_from_symbol(pkmn.species), get_body_number_from_symbol(pkmn.species)] : [pkmn.species]
+    return parts.map { |s| (GameData::Species.get(s).get_baby_species.to_s rescue nil) }.compact.uniq
+  rescue Exception
+    return []
+  end
+
+  def after_battle(battle)
+    return if !battle.wildBattle? || !battle.internalBattle
+    full_scan   # tag a Pokémon caught just now before anything else gets a number
+    return if battle.decision == 0 || battle.decision == 4
+    seq = ($PokemonGlobal.soullink_seq || 0) + 1
+    $PokemonGlobal.soullink_seq = seq
+    wild = battle.pbParty(1).compact.map do |pk|
+      { "name" => utf8(pk.speciesName), "families" => families_of(pk) }
+    end
+    fails = ($PokemonGlobal.soullink_fails ||= [])
+    fails << {
+      "id"     => "f#{seq}",
+      "seq"    => seq,
+      "route"  => utf8(pbGetMapNameFromId($game_map.map_id)),
+      "result" => BATTLE_RESULTS[battle.decision] || "gescheitert",
+      "wild"   => wild
+    }
+    fails.shift while fails.length > MAX_FAILS
+  end
+
+  # Party Pokémon at 0 HP while the faint animation is still running
+  def record_deaths_in_battle
+    return if !@battle
+    @battle.battlers.each do |b|
+      next if !b || !b.pokemon || b.hp > 0
+      record_death(b, true)
+    end
+  end
+
   def pokemon_entry(pkmn, box, slot, box_name = nil)
     return nil if pkmn.egg?
     tag = ensure_tag(pkmn)
@@ -307,16 +393,27 @@ module SoulLinkTracker
     entry["box_name"] = utf8(box_name) if box_name
     key = sprite_key(pkmn)
     entry["sprite"] = key if sprite_exists?(key)
+    death = death_of(pkmn)
+    entry["death"] = death if death
+    # Infinite Fusion dex numbers: used to find the sprite in the official sprite
+    # archive while the game has not exported its own picture yet
+    entry["dex"] = (GameData::Species.get(pkmn.species).id_number rescue nil)
+    entry["families"] = families_of(pkmn)   # for the dupe clause
     if entry["fusion"]
       head = GameData::Species.get(get_head_number_from_symbol(pkmn.species)) rescue nil
       body = GameData::Species.get(get_body_number_from_symbol(pkmn.species)) rescue nil
-      entry["head"] = { "species" => head.id.to_s, "name" => utf8(head.name) } if head
-      entry["body"] = { "species" => body.id.to_s, "name" => utf8(body.name) } if body
+      entry["head"] = { "species" => head.id.to_s, "name" => utf8(head.name), "num" => head.id_number } if head
+      entry["body"] = { "species" => body.id.to_s, "name" => utf8(body.name), "num" => body.id_number } if body
     end
     return entry
   end
 
   def build_state(in_battle)
+    begin
+      record_deaths_in_battle if in_battle
+    rescue Exception => e
+      log_error(e)
+    end
     party = []
     party_list.each_with_index do |pkmn, i|
       entry = pokemon_entry(pkmn, -1, i)
@@ -334,7 +431,8 @@ module SoulLinkTracker
       "map"       => utf8(map_name),
       "in_battle" => in_battle ? true : false,
       "party"     => party,
-      "boxes"     => @box_entries
+      "boxes"     => @box_entries,
+      "fails"     => ($PokemonGlobal.soullink_fails || [])
     }
   end
 
@@ -403,6 +501,7 @@ end
 #==============================================================================
 class PokemonGlobalMetadata
   attr_accessor :soullink_seq
+  attr_accessor :soullink_fails   # wild battles that ended without a catch
 end
 
 #==============================================================================
@@ -425,6 +524,41 @@ def pbFuse(pokemon_body, pokemon_head, *args)
     SoulLinkTracker.log_error(e)
   end
   return ret
+end
+
+#==============================================================================
+# Remember the running battle and record who knocked out the player's Pokémon
+#==============================================================================
+if defined?(PokeBattle_Battle) && defined?(PokeBattle_Battler)
+  class PokeBattle_Battle
+    alias soullink_original_pbStartBattle pbStartBattle
+
+    def pbStartBattle(*args)
+      SoulLinkTracker.current_battle = self
+      ret = soullink_original_pbStartBattle(*args)
+      begin
+        SoulLinkTracker.after_battle(self)
+      rescue Exception => e
+        SoulLinkTracker.log_error(e)
+      end
+      return ret
+    ensure
+      SoulLinkTracker.current_battle = nil
+    end
+  end
+
+  class PokeBattle_Battler
+    alias soullink_original_pbFaint pbFaint
+
+    def pbFaint(*args)
+      begin
+        SoulLinkTracker.record_death(self) if fainted? && !@fainted
+      rescue Exception => e
+        SoulLinkTracker.log_error(e)
+      end
+      return soullink_original_pbFaint(*args)
+    end
+  end
 end
 
 #==============================================================================
