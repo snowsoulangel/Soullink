@@ -124,9 +124,11 @@ export function locationLabel(mon) {
   return "PC";
 }
 
+// Display name set on the run page, otherwise the trainer name from the game
 export function playerName(view, player) {
-  const info = view.players[player] && view.players[player].info;
-  return (info && info.name) || `Spieler ${player}`;
+  const pl = view.players[player];
+  if (pl && pl.displayName) return pl.displayName;
+  return (pl && pl.info && pl.info.name) || `Spieler ${player}`;
 }
 
 export function timeAgo(ts) {

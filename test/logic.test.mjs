@@ -245,3 +245,17 @@ test("fainting before the first Poké Balls does not count", () => {
   applySnapshot(room, "1", s(0, true), 5000);     // now it counts
   assert.equal(buildView(room, 5000).mons[1].a1.dead, true);
 });
+
+test("display names replace the trainer names", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  applySnapshot(room, "1", snap([], [], "Test"), 1000);
+  applySnapshot(room, "2", snap([], [], "Spieler2"), 1000);
+  applyAction(room, "1", { type: "setNames", names: { 1: "Tim", 2: "Artur" } }, 1100);
+  let v = buildView(room, 1100);
+  assert.equal(v.players[1].displayName, "Tim");
+  assert.equal(v.players[2].displayName, "Artur");
+  assert.equal(v.players[1].info.name, "Test");   // the game name stays available
+  assert.equal(v.title, "Artur & Tim");
+  applyAction(room, "1", { type: "setNames", names: { 1: "", 2: "Artur" } }, 1200);
+  assert.equal(buildView(room, 1200).players[1].displayName, "Test");
+});

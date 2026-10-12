@@ -190,14 +190,14 @@ function playerInfo(v, p) {
   const pl = v.players[p];
   const info = pl.info;
   if (!info) {
-    return `<div class="panel pinfo p${p}"><div class="pname">Spieler ${p}</div>
+    return `<div class="panel pinfo p${p}"><div class="pname">${esc(playerName(v, p))}</div>
       <div class="facts">Noch keine Daten. Spiel mit Mod starten und Hilfsprogramm (start.bat) laufen lassen.</div></div>`;
   }
   const online = pl.online ? `<span class="dot on"></span> online` : `<span class="dot"></span> offline`;
   const waiting = pl.waitingNewSave ? `<div class="warn">⏳ Warte auf neuen Spielstand – der alte wird für Versuch #${v.attempt} ignoriert.</div>`
     : info.balls === false ? `<div class="muted small">🔴 Noch keine Pokébälle – K.O. und Fluchten zählen noch nicht.</div>` : "";
   return `<div class="panel pinfo p${p}">
-    <div class="pname">${esc(info.name)}</div>${waiting}
+    <div class="pname">${esc(playerName(v, p))}${pl.customName && info.name !== pl.customName ? ` <span class="muted small">(im Spiel: ${esc(info.name)})</span>` : ""}</div>${waiting}
     <div class="facts">
       <span>${online}</span>
       <span>🏅 ${info.badges} Orden</span>
@@ -506,6 +506,14 @@ function settingsTab(v) {
       <h2>Run</h2>
       <div class="copyrow"><input type="text" id="titleInput" value="${esc(v.title)}" ${key ? "" : "disabled"}><button class="btn" id="saveTitle" ${key ? "" : "disabled"}>Titel speichern</button></div>
       <div class="copyrow"><input type="text" readonly value="${esc(location.href)}"><button class="btn" data-copy="${esc(location.href)}">Link kopieren</button></div>
+      <h3 style="margin:6px 0 0;font-size:15px">Anzeigenamen</h3>
+      <p class="muted small" style="margin:0">Stehen im Kill-Counter, in den Overlays, Rahmen und im Titel. Leer lassen = Name aus dem Spiel.</p>
+      <div class="killedit">${PLAYERS.map((p) => {
+        const pl = v.players[p];
+        const ingame = (pl.info && pl.info.name) || `Spieler ${p}`;
+        return `<label class="p${p}"><span style="color:var(--pc)">Spieler ${p}</span>
+          <input type="text" maxlength="24" id="name${p}" value="${esc(pl.customName || "")}" placeholder="${esc(ingame)}" ${key ? "" : "disabled"} style="width:150px"></label>`;
+      }).join("")}<button class="btn" id="saveNames" ${key ? "" : "disabled"}>Namen speichern</button></div>
       ${key && myPlayer ? `<details><summary>Meine config.txt anzeigen</summary><textarea rows="6" readonly>${esc(configText(room, myPlayer, key))}</textarea></details>` : ""}
       ${key ? `<details><summary class="bad">Gefahrenzone</summary><p class="small">Löscht alle Daten eines Spielers, z. B. nach einem Neustart des Spielstands. Die Daten kommen beim nächsten Update aus dem Spiel neu rein.</p>
         ${PLAYERS.map((p) => `<button class="btn danger" data-reset="${p}">Spieler ${p} zurücksetzen</button>`).join(" ")}</details>` : ""}
@@ -599,6 +607,11 @@ function bind() {
     const answer = prompt(`Versuch #${view.attempt || 1} wirklich beenden? Teams, Links und Log werden geleert${carry ? ", der Kill-Counter bleibt" : " und der Kill-Counter beginnt bei 0"}.\nZum Bestätigen NEU eintippen.`);
     if (answer !== "NEU") return;
     if (await act({ type: "newRun", carry, confirm: "NEU" })) toast("Neuer Versuch gestartet – jetzt neue Spielstände anlegen");
+  };
+  const saveNames = document.getElementById("saveNames");
+  if (saveNames) saveNames.onclick = async () => {
+    const names = { 1: document.getElementById("name1").value, 2: document.getElementById("name2").value };
+    if (await act({ type: "setNames", names })) toast("Namen gespeichert");
   };
   const saveKills = document.getElementById("saveKills");
   if (saveKills) saveKills.onclick = async () => {

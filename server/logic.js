@@ -78,7 +78,8 @@ export function applySnapshot(room, player, snap, now) {
   if (!p.preBallFainted) p.preBallFainted = {};
   const reg = p.registry;
   const firstSync = Object.keys(reg).length === 0;
-  const playerName = (snap.trainer && snap.trainer.name) || `Spieler ${player}`;
+  const trainerName = (snap.trainer && snap.trainer.name) || `Spieler ${player}`;
+  const playerName = (room.meta.displayNames && room.meta.displayNames[player]) || trainerName;   // for log texts
   const seen = new Set();
   let newCount = 0;
 
@@ -181,7 +182,7 @@ export function applySnapshot(room, player, snap, now) {
 
   p.party = (snap.party || []).map((m) => (m.tags && m.tags[0] ? String(m.tags[0].id) : null)).filter(Boolean);
   p.info = {
-    name: playerName,
+    name: trainerName,   // as in the game; the display name is applied in buildView
     badges: (snap.trainer && snap.trainer.badges) || 0,
     money: (snap.trainer && snap.trainer.money) || 0,
     map: snap.map || "",
@@ -239,9 +240,11 @@ function applyFails(room, player, playerName, fails, now, quiet) {
   }
 }
 
+// Name shown everywhere: set by hand on the run page, otherwise the trainer name from the game
 function playerLabel(room, player) {
+  const custom = room.meta.displayNames && room.meta.displayNames[player];
   const info = room.players[player].info;
-  return (info && info.name) || `Spieler ${player}`;
+  return custom || (info && info.name) || `Spieler ${player}`;
 }
 
 export function failText(f) {
@@ -423,6 +426,8 @@ export function buildView(room, now) {
       lastUpdate: p.lastUpdate,
       lastSeen: p.lastSeen,
       online: now - p.lastSeen < 120000,
+      displayName: playerLabel(room, player),
+      customName: (room.meta.displayNames && room.meta.displayNames[player]) || null,
       waitingNewSave: !!p.waitingNewSave,
     };
   }
@@ -487,14 +492,16 @@ export function countKills(mons) {
 // Title of the run: set by hand, otherwise built from the trainer names ("Artur & Tim").
 export function runTitle(room) {
   if (room.meta.titleSet || room.meta.title !== DEFAULT_TITLE) return room.meta.title;
-  const names = PLAYERS.map((p) => room.players[p].info && room.players[p].info.name).filter(Boolean);
+  const names = PLAYERS
+    .filter((p) => room.players[p].info || (room.meta.displayNames && room.meta.displayNames[p]))
+    .map((p) => playerLabel(room, p));
   if (!names.length) return DEFAULT_TITLE;
   return names.sort((a, b) => a.localeCompare(b, "de")).join(" & ");
 }
 
 // Manual corrections from the dashboard. Returns an error string or null.
 export function applyAction(room, actor, action, now) {
-  const actorName = (room.players[actor].info && room.players[actor].info.name) || `Spieler ${actor}`;
+  const actorName = playerLabel(room, actor);
   switch (action.type) {
     case "setTitle": {
       const title = String(action.title || "").slice(0, 80).trim();
@@ -580,6 +587,17 @@ export function applyAction(room, actor, action, now) {
       room.manual = { routes: {}, dead: {}, ignore: {} };
       room.events = [];
       pushEvent(room, actor, "newrun", `🏁 Versuch #${attempt} beendet (${actorName}). Versuch #${attempt + 1} beginnt – neue Spielstände starten!`, now);
+      return null;
+    }
+    case "setNames": {
+      // display names instead of the trainer names; empty = back to the name from the game
+      const names = room.meta.displayNames || (room.meta.displayNames = {});
+      for (const p of PLAYERS) {
+        const value = String((action.names && action.names[p]) || "").trim().slice(0, 24);
+        if (value) names[p] = value;
+        else delete names[p];
+      }
+      pushEvent(room, actor, "names", `Anzeigenamen von ${actorName} geändert: ${playerLabel(room, "1")} & ${playerLabel(room, "2")}`, now);
       return null;
     }
     case "setKills": {
