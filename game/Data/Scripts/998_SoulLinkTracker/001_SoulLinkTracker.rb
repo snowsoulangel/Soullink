@@ -10,7 +10,7 @@
 # so links survive fusing, unfusing and evolving.
 #==============================================================================
 module SoulLinkTracker
-  VERSION        = "1.3.0"
+  VERSION        = "1.3.1"
   OUTPUT_DIR     = "SoulLink"
   OUTPUT_FILE    = "SoulLink/state.json"
   TEMP_FILE      = "SoulLink/state.json.tmp"
@@ -339,15 +339,32 @@ module SoulLinkTracker
     return []
   end
 
+  # The wild Pokémon of a failed encounter, with its sprite for the overlay
+  def wild_entry(pk)
+    e = { "name" => utf8(pk.speciesName), "families" => families_of(pk), "fusion" => fusion?(pk) }
+    e["dex"] = (GameData::Species.get(pk.species).id_number rescue nil)
+    if e["fusion"]
+      e["head"] = (GameData::Species.get(get_head_number_from_symbol(pk.species)).id_number rescue nil)
+      e["body"] = (GameData::Species.get(get_body_number_from_symbol(pk.species)).id_number rescue nil)
+    end
+    begin
+      key = sprite_key(pk)
+      export_sprite(pk) if !@sprites_off && !sprite_exists?(key)
+      key = sprite_key(pk)
+      e["sprite"] = key if sprite_exists?(key)
+    rescue Exception => err
+      log_error(err)
+    end
+    return e
+  end
+
   def after_battle(battle)
     return if !battle.wildBattle? || !battle.internalBattle
     full_scan   # tag a Pokémon caught just now before anything else gets a number
     return if battle.decision == 0 || battle.decision == 4
     seq = ($PokemonGlobal.soullink_seq || 0) + 1
     $PokemonGlobal.soullink_seq = seq
-    wild = battle.pbParty(1).compact.map do |pk|
-      { "name" => utf8(pk.speciesName), "families" => families_of(pk) }
-    end
+    wild = battle.pbParty(1).compact.map { |pk| wild_entry(pk) }
     fails = ($PokemonGlobal.soullink_fails ||= [])
     fails << {
       "id"     => "f#{seq}",

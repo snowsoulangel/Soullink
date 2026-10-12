@@ -52,6 +52,21 @@ export function spriteHtml(mon, cls = "") {
   return `<div class="sprite game ${own ? "" : "archive"} ${cls}"${title}><img src="${esc(first)}" alt="" decoding="sync" data-next="${esc(next)}" onerror="soullinkSpriteError(this)"></div>`;
 }
 
+// The wild Pokémon of a failed encounter, shaped like a mon so spriteHtml can draw it.
+export function wildMon(w) {
+  if (!w) return null;
+  return {
+    name: w.name, sprite: w.sprite, fusion: !!w.fusion, dex: w.dex,
+    head: w.head ? { num: w.head, name: w.name } : null, body: w.body ? { num: w.body, name: "" } : null,
+  };
+}
+
+// "Artur hat's verkackt" + "geflohen: Zubat/Ekans"
+export function failLabels(detail) {
+  const names = (detail.wild || []).map((w) => w.name).join(" / ");
+  return { who: `${detail.by} hat's verkackt`, what: `${detail.result}${names ? `: ${names}` : ""}` };
+}
+
 export function hpPercent(mon) {
   if (!mon || !mon.maxhp) return 0;
   return Math.max(0, Math.min(100, (mon.hp / mon.maxhp) * 100));

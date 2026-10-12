@@ -1,6 +1,6 @@
 import {
   params, esc, spriteHtml, hpBar, animateHpBars, monName, speciesLabel, locationLabel,
-  playerName, timeAgo, clockTime, connect,
+  playerName, timeAgo, clockTime, connect, wildMon, failLabels,
 } from "./common.js";
 
 const app = document.getElementById("app");
@@ -261,11 +261,13 @@ function teamPairsView(v) {
       }
       const reason = links.some((l) => l.linkStatus === "failed") ? "Begegnung gescheitert"
         : links.every((l) => l.extra) ? "kein Link (Zusatz)" : "wartet auf Partner";
+      const fail = links.map((l) => l.partnerFail).find(Boolean);
       rows.push({
         sides: { [p]: [mon], [op]: partners },
         routes: [...new Set(links.map((l) => l.route))],
         dead: links.some((l) => l.linkStatus === "dead"),
         reason: { [op]: reason },
+        failDetail: { [op]: fail || null },
         context: "team",
       });
     }
@@ -310,6 +312,8 @@ function boxView(v) {
 function pairRow(v, row) {
   const side = (p) => {
     const list = row.sides[p];
+    const fail = row.failDetail && row.failDetail[p];
+    if (!list.length && fail) return `<div class="side p${p}">${failCard(fail)}</div>`;
     if (!list.length) return `<div class="side p${p}"><div class="bigmon ghost"><div class="stage"><span class="q">?</span></div>
       <div class="meta"><div class="sub">${esc(row.reason[p] || "")}</div></div></div></div>`;
     return `<div class="side p${p} ${list.length > 1 ? "multi" : ""}">${list.map((m) => bigCard(v, m, row.context)).join("")}</div>`;
@@ -321,6 +325,15 @@ function pairRow(v, row) {
     <div class="linkmid"><span class="ring">${row.dead ? "☠" : "⛓"}</span>${row.routes.map((r) => `<span class="route">${esc(r)}</span>`).join("")}${when}</div>
     ${side("2")}
   </div>`;
+}
+
+// Failed encounter in place of the partner: the wild Pokémon greyed out, and who failed
+function failCard(detail) {
+  const w = (detail.wild || [])[0];
+  const { who, what } = failLabels(detail);
+  return `<div class="bigmon ghost failed">
+    <div class="stage">${w ? spriteHtml(wildMon(w), "xl") : ""}<span class="x">✗</span></div>
+    <div class="meta"><div class="name">${esc(who)}</div><div class="sub">${esc(what)}</div></div></div>`;
 }
 
 function bigCard(v, mon, context) {
@@ -347,8 +360,11 @@ function monCell(v, p, id, route) {
   const mon = id ? v.mons[p][id] : null;
   let html;
   if (route.failed[p]) {
-    const info = route.failInfo && route.failInfo[p];
-    html = `<span class="muted">✗ gescheitert${info ? ` <span class="small">(${esc(info)})</span>` : ""}</span>`;
+    const detail = route.failDetail && route.failDetail[p];
+    const w = detail && (detail.wild || [])[0];
+    const labels = detail ? failLabels(detail) : { who: "gescheitert", what: "" };
+    html = `<div class="cellmon failcell">${w ? spriteHtml(wildMon(w), "small") : ""}<div class="info">
+      <div><b class="bad">✗ ${esc(labels.who)}</b></div><div class="muted small">${esc(labels.what)}</div></div></div>`;
   }
   else if (!mon) html = `<span class="muted">—</span>`;
   else {
@@ -441,7 +457,7 @@ function allTab(v) {
 function eventsTab(v) {
   if (!v.events.length) return `<div class="panel empty">Noch keine Ereignisse.</div>`;
   return `<div class="panel"><ul class="events">${v.events.map((e) =>
-    `<li><span class="t">${clockTime(e.t)}</span><span class="${e.type === "death" ? "death" : ""}">${esc(e.text)}</span></li>`).join("")}</ul></div>`;
+    `<li><span class="t">${clockTime(e.t)}</span>${(e.wild || []).slice(0, 1).map((w) => spriteHtml(wildMon(w), "small icon")).join("")}<span class="${e.type === "death" || e.type === "fail" ? "death" : ""}">${esc(e.text)}</span></li>`).join("")}</ul></div>`;
 }
 
 function obsTab() {

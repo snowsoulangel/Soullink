@@ -149,6 +149,13 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 .bigmon.dead { background: var(--dead-bg); }
 .bigmon.dead .stage .sprite { filter: grayscale(1); opacity: .6; }
 .bigmon.ghost { border-style: dashed; box-shadow: none; background: transparent; }
+.bigmon.failed { border-color: color-mix(in srgb, var(--red) 55%, transparent); }
+.bigmon.failed .stage .sprite { filter: grayscale(1); opacity: .45; }
+.bigmon.failed .stage .x { position: absolute; z-index: 2; font-size: 48px; font-weight: 800; color: var(--red); opacity: .85; text-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.bigmon.failed .name { color: var(--red); font-size: 16px; }
+.failcell .sprite { filter: grayscale(1); opacity: .6; }
+.events li { align-items: center; }
+.events .sprite.icon { width: 32px; height: 32px; margin: -6px 0; }
 .side.multi .stage { width: clamp(84px, 9vw, 116px); }
 .side.multi .bigmon .name { font-size: 16px; }
 .linkmid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; }

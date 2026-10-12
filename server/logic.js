@@ -31,8 +31,9 @@ function displayName(entry) {
   return entry.name || entry.speciesName || "?";
 }
 
-function pushEvent(room, player, type, text, now, mon = null) {
-  room.events.push(mon ? { t: now, player, type, text, mon } : { t: now, player, type, text });
+// extra: optional fields, e.g. { mon } for deaths or { wild } for failed encounters
+function pushEvent(room, player, type, text, now, extra = null) {
+  room.events.push({ t: now, player, type, text, ...(extra || {}) });
   if (room.events.length > MAX_EVENTS) room.events.splice(0, room.events.length - MAX_EVENTS);
 }
 
@@ -143,7 +144,7 @@ export function applySnapshot(room, player, snap, now) {
       if (Number(m.hp) <= 0 && !e.dead) {
         e.dead = true;
         e.deadAt = now;
-        if (primary) pushEvent(room, player, "death", deathText(playerName, e), now, id);
+        if (primary) pushEvent(room, player, "death", deathText(playerName, e), now, { mon: id });
       }
     }
   }
@@ -194,6 +195,11 @@ function applyFails(room, player, playerName, fails, now, quiet) {
     const wild = (Array.isArray(f.wild) ? f.wild : []).slice(0, 3).map((w) => ({
       name: String((w && w.name) || "?").slice(0, 40),
       families: (Array.isArray(w && w.families) ? w.families : []).slice(0, 4).map((x) => String(x).slice(0, 40)),
+      fusion: !!(w && w.fusion),
+      dex: Number(w && w.dex) || null,
+      head: Number(w && w.head) || null,
+      body: Number(w && w.body) || null,
+      sprite: w && typeof w.sprite === "string" && /^[A-Za-z0-9-]{1,80}$/.test(w.sprite) ? w.sprite : null,
     }));
     const own = Object.values(p.registry);
     const caughtBefore = own.some((e) => e.routeKey === key && e.seq < seq);
@@ -206,12 +212,17 @@ function applyFails(room, player, playerName, fails, now, quiet) {
     let verdict = "counts";
     if (caughtBefore || failedBefore) verdict = "late";
     else if (dupeOf) verdict = "dupe";
-    p.fails[f.id] = { id: String(f.id), seq, route, routeKey: key, result: String(f.result || "gescheitert").slice(0, 20), wild, verdict, t: now };
+    p.fails[f.id] = { id: String(f.id), seq, route, routeKey: key, result: String(f.result || "gescheitert").slice(0, 20), wild, verdict, by: playerName, t: now };
     if (quiet) continue;
     const names = wild.map((w) => w.name).join(" / ") || "?";
-    if (verdict === "counts") pushEvent(room, player, "fail", `✗ ${playerName}: Begegnung auf ${route} gescheitert (${p.fails[f.id].result}: ${names})`, now);
-    if (verdict === "dupe") pushEvent(room, player, "dupe", `↻ ${playerName}: ${dupeOf.name} auf ${route} ist ein Dupe – darf nochmal ins Gras`, now);
+    if (verdict === "counts") pushEvent(room, player, "fail", `✗ ${playerName} hat's verkackt: Begegnung auf ${route} gescheitert (${p.fails[f.id].result}: ${names})`, now, { wild });
+    if (verdict === "dupe") pushEvent(room, player, "dupe", `↻ ${playerName}: ${dupeOf.name} auf ${route} ist ein Dupe – darf nochmal ins Gras`, now, { wild: [dupeOf] });
   }
+}
+
+function playerLabel(room, player) {
+  const info = room.players[player].info;
+  return (info && info.name) || `Spieler ${player}`;
 }
 
 export function failText(f) {
@@ -232,7 +243,7 @@ export function computeRoutes(room) {
   const getRoute = (key, name, firstSeen) => {
     let r = routes.get(key);
     if (!r) {
-      r = { key, name, firstSeen, seq: Infinity, claims: { 1: null, 2: null }, failed: { 1: false, 2: false }, failInfo: { 1: null, 2: null } };
+      r = { key, name, firstSeen, seq: Infinity, claims: { 1: null, 2: null }, failed: { 1: false, 2: false }, failInfo: { 1: null, 2: null }, failDetail: { 1: null, 2: null } };
       routes.set(key, r);
     }
     if (firstSeen < r.firstSeen) r.firstSeen = firstSeen;
@@ -248,6 +259,7 @@ export function computeRoutes(room) {
       if (value === "failed") {
         const r = getRoute(key, choice.name || key, Infinity);
         r.failed[player] = true;
+        r.failDetail[player] = { by: playerLabel(room, player), result: "von Hand markiert", wild: [] };
         continue;
       }
       const e = reg[value];
@@ -267,6 +279,7 @@ export function computeRoutes(room) {
       const r = getRoute(f.routeKey, f.route, f.t);
       r.failed[player] = true;
       r.failInfo[player] = failText(f);
+      r.failDetail[player] = { by: f.by || playerLabel(room, player), result: f.result, wild: f.wild || [] };
       autoFailed.add(f.routeKey);
     }
     const entries = Object.values(reg).sort((a, b) => a.firstSeen - b.firstSeen || a.seq - b.seq);
@@ -353,6 +366,7 @@ export function buildView(room, now) {
         mon: { 1: r.claims[1], 2: r.claims[2] },
         failed: { 1: r.failed[1], 2: r.failed[2] },
         failInfo: r.failInfo,
+        failDetail: r.failDetail,
         choice: room.manual.routes[r.key] || null,
       };
     });
@@ -367,6 +381,8 @@ export function buildView(room, now) {
       const r = key ? routeByKey[key] : null;
       m.partner = r ? r.mon[other(player)] : null;
       m.linkStatus = r ? r.status : "none";
+      // the partner's encounter failed: who and against which wild Pokémon
+      m.partnerFail = r && r.failed[other(player)] ? r.failDetail[other(player)] || null : null;
     }
   }
 

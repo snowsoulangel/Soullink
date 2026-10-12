@@ -88,6 +88,12 @@
   .tile .ghost .sprite { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
   .tile .ghost .sprite.game { transform: scale(1.25); }
   .tile .ghost.dead { opacity: .3; filter: grayscale(1); }
+  /* failed partner encounter: the wild Pokémon that got away */
+  .tile .ghost.fled { opacity: 1; filter: none; }
+  .tile .ghost.fled .sprite { opacity: .45; filter: grayscale(1) drop-shadow(0 0 4px rgba(0,0,0,.6)); }
+  .tile .ghost .xmark { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; font-size: 46px; font-weight: 800; color: var(--dead); }
+  .tile .plate .pl2.failed { color: var(--dead); }
+  .tile .plate .pl2.failed .chain { color: var(--dead); }
   /* two different partners: stacked on the right */
   .tile.two .ghost { width: 70px; height: 70px; right: -6px; top: -2px; }
   .tile.two .ghost.g2 { top: 58px; }
@@ -139,7 +145,7 @@
 <body>
 <div id="root"></div>
 <script type="module">
-  import { params, esc, spriteHtml, hpBar, animateHpBars, monName, speciesLabel, playerName, connect } from "./common.js";
+  import { params, esc, spriteHtml, hpBar, animateHpBars, monName, speciesLabel, playerName, connect, wildMon } from "./common.js";
 
   // URL options:
   //   room=<id>                 required
@@ -222,6 +228,9 @@
   }
 
   function partnerLine(partners, mon) {
+    if (!partners.length && mon.partnerFail) {
+      return `<div class="pl2 failed"><span class="chain">✗</span><span class="pn">${esc(mon.partnerFail.by)} hat's verkackt</span></div>`;
+    }
     if (!partners.length) {
       const text = mon.linkStatus === "failed" ? "Partner gescheitert" : mon.extra ? "kein Link" : "wartet auf Partner";
       return `<div class="pl2 none"><span class="chain">⛓</span><span class="pn">${text}</span></div>`;
@@ -232,7 +241,10 @@
     return `<div class="pl2 ${dead ? "dead" : ""}"><span class="chain">⛓</span><span class="pn">${names}</span>${flag}</div>`;
   }
 
-  function ghostHtml(partners) {
+  function ghostHtml(partners, mon) {
+    // failed partner encounter: the wild Pokémon that got away, greyed out with ✗
+    const fled = !partners.length && mon.partnerFail && (mon.partnerFail.wild || [])[0];
+    if (fled) return `<div class="ghost fled">${spriteHtml(wildMon(fled))}<span class="xmark">✗</span></div>`;
     return partners.slice(0, 2).map((x, i) =>
       `<div class="ghost ${i ? "g2" : ""} ${x.dead ? "dead" : ""}">${spriteHtml(x)}</div>`).join("");
   }
@@ -246,11 +258,11 @@
     if (mon.dead) knownDead.add(key);
     const status = mon.status && mon.status !== "NONE" && !mon.dead ? `<span class="st">${esc(mon.status.slice(0, 3))}</span>` : "";
     const partners = showPartner ? partnersOf(v, p, mon) : [];
-    if (partners.length) cls += " linked";
+    if (partners.length || (mon.partnerFail && (mon.partnerFail.wild || []).length)) cls += " linked";
     if (partners.length > 1) cls += " two";
     return `<div class="tile ${cls}">
       <div class="frame">
-        ${ghostHtml(partners)}
+        ${ghostHtml(partners, mon)}
         ${spriteHtml(mon)}
         <span class="lv">Lv. ${mon.level}</span>${status}
         ${mon.dead ? `<div class="bigskull">☠</div>` : hpBar(mon, false)}
