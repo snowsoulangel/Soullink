@@ -164,7 +164,7 @@ function render() {
   app.innerHTML = `
     <div class="top">
       <div class="title"><h1>${esc(v.title)}</h1>
-        <span class="conn"><span class="dot ${connState === "live" ? "on" : "warn"}"></span>${connLabel}${key ? ` · Bearbeiten als Spieler ${esc(myPlayer || "?")}` : ""}</span></div>
+        <span class="conn"><span class="dot ${connState === "live" ? "on" : "warn"}"></span>${connLabel}${(v.attempt || 1) > 1 ? ` · Versuch #${v.attempt}` : ""}${key ? ` · Bearbeiten als Spieler ${esc(myPlayer || "?")}` : ""}</span></div>
       ${killBox(v)}
     </div>
     <div class="players">${PLAYERS.map((p) => playerInfo(v, p)).join("")}</div>
@@ -178,8 +178,11 @@ function render() {
 // Kill counter: Pokémon each player has on their conscience (own + dragged partners)
 function killBox(v) {
   const kills = v.deaths.kills || { 1: 0, 2: 0 };
-  return `<div class="deathbox" title="Eigenes gestorbenes Pokémon + mitgerissene Partner">
-    ${PLAYERS.map((p) => `<div class="kc p${p}"><span class="num">${kills[p]}</span><span class="who">☠ ${esc(playerName(v, p))}</span></div>`).join(`<span class="vs">vs</span>`)}
+  const total = v.deaths.killsTotal || kills;
+  const carried = PLAYERS.some((p) => total[p] !== kills[p]);
+  return `<div class="deathbox" title="Eigenes gestorbenes Pokémon + mitgerissene Partner${carried ? " (inkl. früherer Versuche)" : ""}">
+    ${PLAYERS.map((p) => `<div class="kc p${p}"><span class="num">${total[p]}</span><span class="who">☠ ${esc(playerName(v, p))}</span>
+      ${carried ? `<span class="run">${kills[p]} in Versuch #${v.attempt || 1}</span>` : ""}</div>`).join(`<span class="vs">vs</span>`)}
   </div>`;
 }
 
@@ -191,8 +194,9 @@ function playerInfo(v, p) {
       <div class="facts">Noch keine Daten. Spiel mit Mod starten und Hilfsprogramm (start.bat) laufen lassen.</div></div>`;
   }
   const online = pl.online ? `<span class="dot on"></span> online` : `<span class="dot"></span> offline`;
+  const waiting = pl.waitingNewSave ? `<div class="warn">⏳ Warte auf neuen Spielstand – der alte wird für Versuch #${v.attempt} ignoriert.</div>` : "";
   return `<div class="panel pinfo p${p}">
-    <div class="pname">${esc(info.name)}</div>
+    <div class="pname">${esc(info.name)}</div>${waiting}
     <div class="facts">
       <span>${online}</span>
       <span>🏅 ${info.badges} Orden</span>
@@ -466,6 +470,8 @@ function obsTab() {
     ["Team-Leiste Spieler 1 (große Sprites, Partner als Blase)", `${base}&player=1&layout=strip`, "1040 × 250"],
     ["Team-Leiste Spieler 2 (große Sprites, Partner als Blase)", `${base}&player=2&layout=strip`, "1040 × 250"],
     ["Beide Team-Leisten untereinander", `${base}&view=both&layout=strip`, "1040 × 540"],
+    ["Team-Leiste Spieler 1 + Kill-Counter rechts daneben", `${base}&player=1&layout=strip&kills=1`, "1300 × 250"],
+    ["Team-Leiste Spieler 2 + Kill-Counter rechts daneben", `${base}&player=2&layout=strip&kills=1`, "1300 × 250"],
     ["Team Spieler 1 mit Partnern (nebeneinander)", `${base}&player=1`, "1000 × 340"],
     ["Team Spieler 2 mit Partnern (nebeneinander)", `${base}&player=2`, "1000 × 340"],
     ["Team Spieler 1 (untereinander, für den Rand)", `${base}&player=1&layout=column`, "300 × 1000"],
@@ -498,6 +504,30 @@ function settingsTab(v) {
       ${key ? `<details><summary class="bad">Gefahrenzone</summary><p class="small">Löscht alle Daten eines Spielers, z. B. nach einem Neustart des Spielstands. Die Daten kommen beim nächsten Update aus dem Spiel neu rein.</p>
         ${PLAYERS.map((p) => `<button class="btn danger" data-reset="${p}">Spieler ${p} zurücksetzen</button>`).join(" ")}</details>` : ""}
     </div>
+    ${attemptsPanel(v)}
+  </div>`;
+}
+
+// Ending an attempt, the kill counter across attempts and the list of past attempts
+function attemptsPanel(v) {
+  const total = v.deaths.killsTotal || v.deaths.kills;
+  const date = (t) => new Date(t).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const days = (a, b) => Math.max(1, Math.round((b - a) / 86400000));
+  const rows = [...(v.history || [])].reverse().map((h) => `<tr>
+    <td><b>#${h.attempt}</b></td><td class="muted small">${date(h.start)} – ${date(h.end)} (${days(h.start, h.end)} T.)</td>
+    <td>${PLAYERS.map((p) => `<span class="p${p}" style="color:var(--pc)">${esc(h.names[p])}</span> ${h.kills[p]}`).join(" · ")}</td>
+    <td class="muted small">${h.links} Links</td></tr>`).join("");
+  return `<div class="panel stack attempts">
+    <h2>Versuch #${v.attempt || 1}</h2>
+    <p class="muted small">Ist der Run vorbei, startet hier ein neuer Versuch: Teams, Links, Friedhof und Log werden geleert, der alte Versuch kommt in die Liste unten.
+      <b>Run-Seite, OBS-Links und config.txt bleiben gleich.</b> Danach startet ihr beide im Spiel einen neuen Spielstand. Der alte wird automatisch ignoriert.</p>
+    ${key ? `<label class="small"><input type="checkbox" id="carryKills" checked> Kill-Counter in den neuen Versuch übernehmen</label>
+      <div><button class="btn danger" id="newRun">🏁 Run beenden & neuen Versuch starten</button></div>
+      <h3>Kill-Counter anpassen</h3>
+      <div class="killedit">${PLAYERS.map((p) => `<label class="p${p}"><span style="color:var(--pc)">${esc(playerName(v, p))}</span>
+        <input type="number" min="0" max="9999" id="kills${p}" value="${total[p]}"></label>`).join("")}
+        <button class="btn" id="saveKills">Speichern</button></div>` : `<p class="muted small">Zum Beenden oder Anpassen erst oben den Schlüssel eintragen.</p>`}
+    ${rows ? `<h3>Bisherige Versuche</h3><div class="tablewrap"><table><tbody>${rows}</tbody></table></div>` : ""}
   </div>`;
 }
 
@@ -556,6 +586,18 @@ function bind() {
     key = null;
     myPlayer = null;
     render();
+  };
+  const newRun = document.getElementById("newRun");
+  if (newRun) newRun.onclick = async () => {
+    const carry = document.getElementById("carryKills").checked;
+    const answer = prompt(`Versuch #${view.attempt || 1} wirklich beenden? Teams, Links und Log werden geleert${carry ? ", der Kill-Counter bleibt" : " und der Kill-Counter beginnt bei 0"}.\nZum Bestätigen NEU eintippen.`);
+    if (answer !== "NEU") return;
+    if (await act({ type: "newRun", carry, confirm: "NEU" })) toast("Neuer Versuch gestartet – jetzt neue Spielstände anlegen");
+  };
+  const saveKills = document.getElementById("saveKills");
+  if (saveKills) saveKills.onclick = async () => {
+    const totals = { 1: Number(document.getElementById("kills1").value), 2: Number(document.getElementById("kills2").value) };
+    if (await act({ type: "setKills", totals })) toast("Kill-Counter gespeichert");
   };
   const saveTitle = document.getElementById("saveTitle");
   if (saveTitle) saveTitle.onclick = async () => {

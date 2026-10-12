@@ -64,6 +64,14 @@ function deathText(playerName, e) {
 // Applies a snapshot written by the game mod. Returns true if something changed.
 export function applySnapshot(room, player, snap, now) {
   const p = room.players[player];
+  const saveId = snap.trainer && snap.trainer.id != null ? String(snap.trainer.id) : null;
+  // after "new attempt" the old save file is ignored until a new one reports in
+  if (p.blockedSave && saveId === p.blockedSave) {
+    p.lastSeen = now;
+    p.waitingNewSave = true;
+    return false;
+  }
+  p.waitingNewSave = false;
   const reg = p.registry;
   const firstSync = Object.keys(reg).length === 0;
   const playerName = (snap.trainer && snap.trainer.name) || `Spieler ${player}`;
@@ -171,6 +179,7 @@ export function applySnapshot(room, player, snap, now) {
     money: (snap.trainer && snap.trainer.money) || 0,
     map: snap.map || "",
     inBattle: !!snap.in_battle,
+    saveId,
     gameVersion: snap.game_version || "?",
     modVersion: snap.mod_version || "?",
   };
@@ -388,7 +397,11 @@ export function buildView(room, now) {
     }
   }
 
-  const deaths = { pairs: 0, 1: 0, 2: 0, kills: countKills(mons) };
+  const kills = countKills(mons);
+  const offset = room.meta.killOffset || {};
+  // killsTotal: carried over from earlier attempts or adjusted by hand + this attempt
+  const killsTotal = { 1: kills[1] + (offset[1] || 0), 2: kills[2] + (offset[2] || 0) };
+  const deaths = { pairs: 0, 1: 0, 2: 0, kills, killsTotal };
   for (const r of routeList) if (r.status === "dead") deaths.pairs++;
   // own Pokémon that died (a fusion counts once)
   for (const player of PLAYERS) deaths[player] = deadUnits(mons, player).length;
@@ -402,12 +415,16 @@ export function buildView(room, now) {
       lastUpdate: p.lastUpdate,
       lastSeen: p.lastSeen,
       online: now - p.lastSeen < 120000,
+      waitingNewSave: !!p.waitingNewSave,
     };
   }
 
   return {
     title: runTitle(room),
     created: room.meta.created,
+    attempt: room.meta.attempt || 1,
+    attemptStart: room.meta.attemptStart || room.meta.created,
+    history: room.meta.history || [],
     now,
     players,
     mons,
@@ -524,6 +541,49 @@ export function applyAction(room, actor, action, now) {
       delete room.players[player].registry[action.id];
       delete room.manual.dead[`${player}:${e.id}`];
       delete room.manual.ignore[`${player}:${e.id}`];
+      return null;
+    }
+    case "newRun": {
+      // Ends the current attempt: archives its numbers, optionally carries the kill
+      // counter over, and clears teams/links/log. Keys, links and overlays stay the same.
+      if (action.confirm !== "NEU") return "Bestätigung fehlt";
+      const v = buildView(room, now);
+      const meta = room.meta;
+      const attempt = meta.attempt || 1;
+      const history = meta.history || (meta.history = []);
+      history.push({
+        attempt, start: meta.attemptStart || meta.created, end: now,
+        names: { 1: playerLabel(room, "1"), 2: playerLabel(room, "2") },
+        kills: { ...v.deaths.kills }, deaths: { 1: v.deaths[1], 2: v.deaths[2] },
+        links: v.routes.filter((r) => r.status !== "failed").length,
+      });
+      if (history.length > 50) history.splice(0, history.length - 50);
+      const offset = meta.killOffset || (meta.killOffset = { 1: 0, 2: 0 });
+      if (action.carry !== false) for (const p of PLAYERS) offset[p] = (offset[p] || 0) + (v.deaths.kills[p] || 0);
+      meta.attempt = attempt + 1;
+      meta.attemptStart = now;
+      for (const p of PLAYERS) {
+        const info = room.players[p].info;
+        room.players[p] = emptyPlayer();
+        room.players[p].info = info;   // keep the names until the new save files report in
+        room.players[p].blockedSave = (info && info.saveId) || null;
+        room.players[p].waitingNewSave = !!(info && info.saveId);
+      }
+      room.manual = { routes: {}, dead: {}, ignore: {} };
+      room.events = [];
+      pushEvent(room, actor, "newrun", `🏁 Versuch #${attempt} beendet (${actorName}). Versuch #${attempt + 1} beginnt – neue Spielstände starten!`, now);
+      return null;
+    }
+    case "setKills": {
+      // sets the displayed kill totals by hand; stored as an offset to this attempt's kills
+      const kills = buildView(room, now).deaths.kills;
+      const offset = room.meta.killOffset || (room.meta.killOffset = { 1: 0, 2: 0 });
+      for (const p of PLAYERS) {
+        const total = Math.round(Number(action.totals && action.totals[p]));
+        if (!Number.isFinite(total) || total < 0 || total > 9999) return "Ungültige Zahl";
+        offset[p] = total - (kills[p] || 0);
+      }
+      pushEvent(room, actor, "kills", `Kill-Counter von ${actorName} angepasst: ${playerLabel(room, "1")} ${action.totals[1]}, ${playerLabel(room, "2")} ${action.totals[2]}`, now);
       return null;
     }
     case "resetPlayer": {

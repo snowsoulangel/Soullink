@@ -156,7 +156,8 @@ Auf der Run-Seite unter **Einstellungen** einmal den eigenen `KEY` eintragen. Da
 | „falscher Schlüssel oder Spieler“ | `config.txt` prüfen. Jeder Spieler braucht seinen eigenen Block, `PLAYER=1` bzw. `PLAYER=2`. |
 | `SoulLink/error.log` existiert | Die Mod hatte einen Fehler. Das Spiel läuft weiter, aber schickt die Datei bitte zur Fehlersuche. |
 | Overlay zeigt nicht den Sprite aus dem Spiel | Die Mod speichert den Sprite, den das Spiel zeigt (gewählter Alt-Sprite, Custom/Autogen, Shiny), in `SoulLink/sprites`, das Hilfsprogramm lädt ihn hoch. Team-Pokémon kommen außerhalb von Kämpfen nach ein paar Sekunden dran, PC-Pokémon erst, wenn das Spiel ihren Sprite schon einmal geladen hat. Bis dahin zeigt das Overlay den Sprite aus dem offiziellen Infinite-Fusion-Sprite-Archiv (nur Custom-Sprites; fehlt dort einer, erscheint ein „?“). Hüte von Pokémon werden nicht mit angezeigt. |
-| Spielstand neu angefangen | Run-Seite → Einstellungen → Gefahrenzone → „Spieler X zurücksetzen“, oder einfach einen neuen Run erstellen. |
+| Run vorbei, neuer Versuch | Run-Seite → Einstellungen → **„Run beenden & neuen Versuch starten“**. Der alte Versuch wird archiviert, der Kill-Counter übernommen (abwählbar, jederzeit von Hand anpassbar). Links, Overlays und `config.txt` bleiben gleich. Danach beide einen neuen Spielstand starten; der alte wird anhand der Trainer-ID ignoriert. |
+| Nur ein Spieler hat neu angefangen | Run-Seite → Einstellungen → Gefahrenzone → „Spieler X zurücksetzen“. |
 
 ### Kostenlos-Limits
 

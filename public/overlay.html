@@ -81,22 +81,24 @@
   .tile .frame > .sprite { position: absolute; z-index: 1; width: 132px; height: 132px; left: 50%; top: 4px; margin-left: -66px; }
   .tile .frame > .sprite.game { transform: scale(1.35); }
   /* Linked partner: large and ghosted behind your own Pokémon */
-  /* Linked partner: ghosted on the right, your Pokémon on the left, only edges overlap */
-  .tile.linked .frame > .sprite { width: 124px; height: 124px; left: -12px; top: 8px; margin-left: 0; }
+  /* Linked partner: your Pokémon on the left; the partner sits in FRONT of it (top
+     right) so even a huge sprite cannot hide it. A soft dark halo, no ring, sets it apart. */
+  .tile.linked .frame > .sprite { width: 128px; height: 128px; left: -10px; top: 12px; margin-left: 0; }
   .tile.linked .frame > .sprite.game { transform: scale(1.25); }
-  .tile .ghost { position: absolute; z-index: 0; width: 92px; height: 92px; right: -10px; top: 8px; opacity: .6; filter: saturate(.75) drop-shadow(0 0 4px rgba(0,0,0,.6)); }
-  .tile .ghost .sprite { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
+  .tile .ghost { position: absolute; z-index: 2; width: 74px; height: 74px; right: -4px; top: -4px; }
+  .tile .ghost::before { content: ""; position: absolute; inset: -8px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(12,13,22,.8) 0%, rgba(12,13,22,.55) 42%, rgba(12,13,22,0) 70%); }
+  .tile .ghost .sprite { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: .92; filter: drop-shadow(0 0 3px rgba(0,0,0,.8)); }
   .tile .ghost .sprite.game { transform: scale(1.25); }
-  .tile .ghost.dead { opacity: .3; filter: grayscale(1); }
+  .tile .ghost.dead .sprite { opacity: .4; filter: grayscale(1); }
   /* failed partner encounter: the wild Pokémon that got away */
-  .tile .ghost.fled { opacity: 1; filter: none; }
-  .tile .ghost.fled .sprite { opacity: .45; filter: grayscale(1) drop-shadow(0 0 4px rgba(0,0,0,.6)); }
-  .tile .ghost .xmark { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; font-size: 46px; font-weight: 800; color: var(--dead); }
+  .tile .ghost.fled .sprite { opacity: .5; filter: grayscale(1) drop-shadow(0 0 3px rgba(0,0,0,.8)); }
+  .tile .ghost .xmark { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; font-size: 40px; font-weight: 800; color: var(--dead); text-shadow: 0 1px 4px #000; }
   .tile .plate .pl2.failed { color: var(--dead); }
   .tile .plate .pl2.failed .chain { color: var(--dead); }
   /* two different partners: stacked on the right */
-  .tile.two .ghost { width: 70px; height: 70px; right: -6px; top: -2px; }
-  .tile.two .ghost.g2 { top: 58px; }
+  .tile.two .ghost { width: 58px; height: 58px; right: -4px; top: -6px; }
+  .tile.two .ghost.g2 { top: 46px; }
   .tile .lv { position: absolute; z-index: 2; top: 7px; left: 8px; font-size: 13px; font-weight: 800; padding: 1px 8px; border-radius: 9px; background: rgba(0,0,0,.55); text-shadow: none; }
   .tile .st { position: absolute; z-index: 2; top: 32px; left: 8px; font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 5px; background: #6b5bd6; }
   .tile .hpbar { position: absolute; z-index: 2; left: 9px; right: 9px; bottom: 8px; height: 7px; margin: 0; background: rgba(0,0,0,.45); }
@@ -130,6 +132,8 @@
 
   /* Kill counter */
   .kills { display: flex; gap: 14px; }
+  .withkills { display: flex; gap: 22px; align-items: flex-end; }
+  .withkills .kills { flex-direction: column; gap: 10px; padding-bottom: 4px; }
   .killbox { position: relative; display: flex; align-items: flex-end; gap: 8px; min-width: 180px; padding: 8px 18px 10px 16px;
     background: var(--card); border: 1px solid var(--card-border); border-left: 5px solid var(--pc); border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
   .killbox .kn { font-size: 64px; font-weight: 800; line-height: .9; font-variant-numeric: tabular-nums; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
@@ -154,6 +158,7 @@
   //   layout=strip|row|column   big sprite tiles in a bar, cards next to or below each other
   //   partner=1|0               show the linked partner (bubble on strip tiles)
   //   label=1|0                 show the player name above the team
+  //   kills=1                   kill counter next to the team (strip layout)
   //   scale=1.0                 size
   const room = params.get("room");
   const view = params.get("view") || "team";
@@ -161,6 +166,7 @@
   const layout = ["column", "strip"].includes(params.get("layout")) ? params.get("layout") : "row";
   const showPartner = params.get("partner") !== "0";
   const showLabel = params.get("label") === "1" || (view === "both" && params.get("label") !== "0");
+  const showKills = params.get("kills") === "1";
   document.documentElement.style.setProperty("--scale", params.get("scale") || "1");
 
   const root = document.getElementById("root");
@@ -285,7 +291,7 @@
   // Kill counter: per player, own Pokémon + every partner it dragged into death
   const lastKills = {};
   function deathsHtml(v) {
-    const kills = v.deaths.kills || { 1: 0, 2: 0 };
+    const kills = v.deaths.killsTotal || v.deaths.kills || { 1: 0, 2: 0 };   // incl. earlier attempts
     const block = (p) => {
       const bump = lastKills[p] !== undefined && kills[p] > lastKills[p] ? "bump" : "";
       lastKills[p] = kills[p];
@@ -300,6 +306,7 @@
     if (view === "deaths") html = deathsHtml(v);
     else if (view === "both") html = teamHtml(v, "1") + teamHtml(v, "2");
     else html = teamHtml(v, player);
+    if (showKills && view !== "deaths") html = `<div class="withkills"><div>${html}</div>${deathsHtml(v)}</div>`;
     firstRender = false;
     if (html === lastHtml) return;   // nothing visible changed: keep the DOM (no sprite flicker)
     lastHtml = html;

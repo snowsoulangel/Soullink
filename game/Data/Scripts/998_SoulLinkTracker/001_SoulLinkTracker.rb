@@ -10,7 +10,7 @@
 # so links survive fusing, unfusing and evolving.
 #==============================================================================
 module SoulLinkTracker
-  VERSION        = "1.3.1"
+  VERSION        = "1.4.0"
   OUTPUT_DIR     = "SoulLink"
   OUTPUT_FILE    = "SoulLink/state.json"
   TEMP_FILE      = "SoulLink/state.json.tmp"
@@ -442,6 +442,7 @@ module SoulLinkTracker
       "game_version" => (Settings::GAME_VERSION_NUMBER rescue "?"),
       "trainer" => {
         "name"   => utf8($Trainer.name),
+        "id"     => ($Trainer.id rescue nil),   # random per save file: tells a new save from the old one
         "badges" => ($Trainer.badge_count rescue 0),
         "money"  => ($Trainer.money rescue 0)
       },

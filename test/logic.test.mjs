@@ -201,3 +201,34 @@ test("a failure gets an event even if the player has not caught anything yet", (
   const v = buildView(room, 2000);
   assert.ok(v.events.some((e) => e.type === "fail" && e.text.startsWith("✗ Artur hat's verkackt")));
 });
+
+test("new attempt archives the run, carries kills over and ignores the old save file", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  const s = (name, id, party) => ({ trainer: { name, id }, map: "Route 1", party, boxes: [] });
+  applySnapshot(room, "1", s("Tim", 111, [mon([tag("a1", 1, "Route 1")], "PIDGEY")]), 1000);
+  applySnapshot(room, "2", s("Artur", 222, [mon([tag("b1", 1, "Route 1")], "ZUBAT")]), 1000);
+  applySnapshot(room, "1", s("Tim", 111, [mon([tag("a1", 1, "Route 1")], "PIDGEY", { hp: 0 })]), 2000);
+  assert.deepEqual(buildView(room, 2000).deaths.killsTotal, { 1: 2, 2: 0 });
+
+  assert.equal(applyAction(room, "1", { type: "newRun", carry: true, confirm: "NEU" }, 3000), null);
+  let v = buildView(room, 3000);
+  assert.equal(v.attempt, 2);
+  assert.equal(v.history.length, 1);
+  assert.deepEqual(v.history[0].kills, { 1: 2, 2: 0 });
+  assert.deepEqual(v.deaths.killsTotal, { 1: 2, 2: 0 });   // carried over
+  assert.equal(v.routes.length, 0);
+  assert.ok(v.players[1].waitingNewSave);
+
+  // the old save keeps sending: ignored
+  applySnapshot(room, "1", s("Tim", 111, [mon([tag("a1", 1, "Route 1")], "PIDGEY", { hp: 0 })]), 4000);
+  assert.equal(Object.keys(room.players[1].registry).length, 0);
+  // a new save file is accepted
+  applySnapshot(room, "1", s("Tim", 333, [mon([tag("n1", 1, "Route 1")], "RATTATA")]), 5000);
+  v = buildView(room, 5000);
+  assert.ok(v.mons[1].n1);
+  assert.equal(v.players[1].waitingNewSave, false);
+
+  // adjusted by hand
+  applyAction(room, "2", { type: "setKills", totals: { 1: 10, 2: 7 } }, 6000);
+  assert.deepEqual(buildView(room, 6000).deaths.killsTotal, { 1: 10, 2: 7 });
+});
