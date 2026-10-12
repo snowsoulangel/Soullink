@@ -134,6 +134,7 @@ Weitere Optionen: `&scale=0.8` zum Verkleinern, `&partner=0` ohne Partner-Zeile 
 - **Gescheiterte Begegnungen werden automatisch erkannt:** Endet der erste wilde Kampf auf einer Route ohne Fang (besiegt, geflohen, verloren), ist die Route für diesen Spieler gescheitert. Später dort gefangene Pokémon zählen als „Zusatz“.
 - **Dupe-Klausel:** Gehört Kopf oder Körper des wilden Pokémon zu einer Entwicklungsreihe, die einer von euch schon gefangen hat, zählt der Kampf nicht und man darf nochmal ins Gras.
 - Weitere Pokémon von einer schon belegten Route, etwa Geschenke oder Dupes, gelten als **„Zusatz“** und sind nicht gelinkt.
+- **Erst ab den ersten Pokébällen:** Vorher (z. B. Rivalenkampf, hohes Gras ohne Bälle) zählen weder K.O. noch Fluchten. Der Zeitpunkt wird einmalig gemerkt.
 - **Tod:** Fällt ein Pokémon auf 0 KP, ist es tot. Das bleibt so, auch wenn es danach geheilt wird. Die Verbindung zum Partner wird als tot markiert. Auf der Run-Seite steht dann beim Partner **„muss weg (Partner tot)“**.
 - **Partner nicht im Team:** Ist das Pokémon im Team, sein Partner aber in der Box, erscheint ein ⚠-Hinweis.
 - **Fusionen:** Ein fusioniertes Pokémon trägt beide Links. Stirbt die Fusion, sterben beide Links.

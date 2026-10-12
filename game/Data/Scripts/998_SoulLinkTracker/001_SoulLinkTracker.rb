@@ -10,7 +10,7 @@
 # so links survive fusing, unfusing and evolving.
 #==============================================================================
 module SoulLinkTracker
-  VERSION        = "1.4.0"
+  VERSION        = "1.5.0"
   OUTPUT_DIR     = "SoulLink"
   OUTPUT_FILE    = "SoulLink/state.json"
   TEMP_FILE      = "SoulLink/state.json.tmp"
@@ -302,6 +302,7 @@ module SoulLinkTracker
   def record_death(battler, need_attacker = false)
     pkmn = battler.pokemon
     return if !pkmn || death_of(pkmn) || !battler.pbOwnedByPlayer?
+    return if !balls_received?   # fainting before the first Poké Balls is not a death
     battle = battler.battle
     idx = battler.lastFoeAttacker.last
     foe = idx ? battle.battlers[idx] : nil
@@ -330,6 +331,29 @@ module SoulLinkTracker
   #----------------------------------------------------------------------------
   BATTLE_RESULTS = { 1 => "besiegt", 2 => "verloren", 3 => "geflohen" }
   MAX_FAILS = 100
+
+  # Nuzlocke rule: deaths and failed encounters only count once the player has
+  # received Poké Balls for the first time. Remembered for good (running out later
+  # does not matter).
+  def balls_received?
+    return true if $PokemonGlobal.soullink_balls
+    found = false
+    ($PokemonBag.pockets || []).each do |pocket|
+      (pocket || []).each do |entry|
+        id, qty = entry
+        next if !id || qty.to_i <= 0
+        if (GameData::Item.get(id).is_poke_ball? rescue false)
+          found = true
+          break
+        end
+      end
+      break if found
+    end
+    $PokemonGlobal.soullink_balls = true if found
+    return found
+  rescue Exception
+    return false
+  end
 
   # Evolution lines (base stage) of a Pokémon; both parts for a fusion
   def families_of(pkmn)
@@ -362,6 +386,7 @@ module SoulLinkTracker
     return if !battle.wildBattle? || !battle.internalBattle
     full_scan   # tag a Pokémon caught just now before anything else gets a number
     return if battle.decision == 0 || battle.decision == 4
+    return if !balls_received?   # before the first Poké Balls nothing counts
     seq = ($PokemonGlobal.soullink_seq || 0) + 1
     $PokemonGlobal.soullink_seq = seq
     wild = battle.pbParty(1).compact.map { |pk| wild_entry(pk) }
@@ -448,6 +473,7 @@ module SoulLinkTracker
       },
       "map"       => utf8(map_name),
       "in_battle" => in_battle ? true : false,
+      "balls"     => balls_received?,
       "party"     => party,
       "boxes"     => @box_entries,
       "fails"     => ($PokemonGlobal.soullink_fails || [])
@@ -520,6 +546,7 @@ end
 class PokemonGlobalMetadata
   attr_accessor :soullink_seq
   attr_accessor :soullink_fails   # wild battles that ended without a catch
+  attr_accessor :soullink_balls   # true once Poké Balls were in the bag for the first time
 end
 
 #==============================================================================

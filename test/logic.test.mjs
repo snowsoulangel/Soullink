@@ -232,3 +232,16 @@ test("new attempt archives the run, carries kills over and ignores the old save 
   applyAction(room, "2", { type: "setKills", totals: { 1: 10, 2: 7 } }, 6000);
   assert.deepEqual(buildView(room, 6000).deaths.killsTotal, { 1: 10, 2: 7 });
 });
+
+test("fainting before the first Poké Balls does not count", () => {
+  const room = emptyRoom({ 1: "k1", 2: "k2" }, 0);
+  const s = (hp, balls) => ({ trainer: { name: "Tim" }, map: "Route 1", balls, party: [mon([tag("a1", 1, "Oak's Lab")], "BULBASAUR", { hp })], boxes: [] });
+  applySnapshot(room, "1", s(20, false), 1000);
+  applySnapshot(room, "1", s(0, false), 2000);    // rival battle lost, no balls yet
+  assert.equal(buildView(room, 2000).mons[1].a1.dead, false);
+  applySnapshot(room, "1", s(0, true), 3000);     // got balls while still at 0 HP: still not a death
+  assert.equal(buildView(room, 3000).mons[1].a1.dead, false);
+  applySnapshot(room, "1", s(20, true), 4000);    // healed
+  applySnapshot(room, "1", s(0, true), 5000);     // now it counts
+  assert.equal(buildView(room, 5000).mons[1].a1.dead, true);
+});

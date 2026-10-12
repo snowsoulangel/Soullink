@@ -194,7 +194,8 @@ function playerInfo(v, p) {
       <div class="facts">Noch keine Daten. Spiel mit Mod starten und Hilfsprogramm (start.bat) laufen lassen.</div></div>`;
   }
   const online = pl.online ? `<span class="dot on"></span> online` : `<span class="dot"></span> offline`;
-  const waiting = pl.waitingNewSave ? `<div class="warn">⏳ Warte auf neuen Spielstand – der alte wird für Versuch #${v.attempt} ignoriert.</div>` : "";
+  const waiting = pl.waitingNewSave ? `<div class="warn">⏳ Warte auf neuen Spielstand – der alte wird für Versuch #${v.attempt} ignoriert.</div>`
+    : info.balls === false ? `<div class="muted small">🔴 Noch keine Pokébälle – K.O. und Fluchten zählen noch nicht.</div>` : "";
   return `<div class="panel pinfo p${p}">
     <div class="pname">${esc(info.name)}</div>${waiting}
     <div class="facts">

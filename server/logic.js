@@ -72,6 +72,10 @@ export function applySnapshot(room, player, snap, now) {
     return false;
   }
   p.waitingNewSave = false;
+  // Nuzlocke rule: fainting only counts once the player has received Poké Balls
+  // (older mods don't report it: count as before)
+  const ballsOk = snap.balls !== false;
+  if (!p.preBallFainted) p.preBallFainted = {};
   const reg = p.registry;
   const firstSync = Object.keys(reg).length === 0;
   const playerName = (snap.trainer && snap.trainer.name) || `Spieler ${player}`;
@@ -149,7 +153,10 @@ export function applySnapshot(room, player, snap, now) {
         const ev = primary && e.dead && room.events.find((x) => x.type === "death" && x.player === player && x.mon === id);
         if (ev) ev.text = deathText(playerName, e);
       }
-      if (Number(m.hp) <= 0 && !e.dead) {
+      // fainted before the first Poké Balls: ignored until it is healed
+      if (Number(m.hp) > 0) delete p.preBallFainted[id];
+      else if (!ballsOk) p.preBallFainted[id] = true;
+      if (Number(m.hp) <= 0 && !e.dead && ballsOk && !p.preBallFainted[id]) {
         e.dead = true;
         e.deadAt = now;
         if (primary) pushEvent(room, player, "death", deathText(playerName, e), now, { mon: id });
@@ -180,6 +187,7 @@ export function applySnapshot(room, player, snap, now) {
     map: snap.map || "",
     inBattle: !!snap.in_battle,
     saveId,
+    balls: ballsOk,
     gameVersion: snap.game_version || "?",
     modVersion: snap.mod_version || "?",
   };
