@@ -88,7 +88,7 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 
 /* Team cards */
 .teamgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.mons { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.mons { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .mon { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px; position: relative; }
 .mon.dead { background: var(--dead-bg); }
 .mon.dead .sprite { filter: grayscale(1); opacity: .7; }
@@ -102,11 +102,69 @@ textarea { width: 100%; font-family: ui-monospace, Consolas, monospace; font-siz
 .bad { color: var(--red); font-weight: 600; }
 .chain { color: var(--accent); }
 
-.sprite { width: 64px; height: 64px; position: relative; flex: none; }
+.sprite { width: 88px; height: 88px; position: relative; flex: none; }
 .sprite img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.sprite.game img { image-rendering: auto; }   /* game sprites are large; smooth when shrinking */
 .sprite.fusion img.body { width: 82%; height: 82%; left: 0; top: 18%; }
 .sprite.fusion img.head { width: 62%; height: 62%; left: 40%; top: -4%; filter: drop-shadow(0 0 1px rgba(0,0,0,.6)); }
-.sprite.small { width: 36px; height: 36px; }
+.sprite.small { width: 48px; height: 48px; }
+.sprite.xl { width: 100%; height: 100%; }
+
+/* View switch */
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
+.seg button { border: 0; background: none; padding: 5px 14px; border-radius: 7px; cursor: pointer; font-weight: 600; color: var(--muted); }
+.seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+/* Pair view */
+.pairs { display: grid; gap: 14px; }
+.pairhead, .pair { display: grid; grid-template-columns: 1fr 76px 1fr; gap: 12px; }
+.pairhead > div { font-weight: 700; font-size: 17px; color: var(--pc); display: flex; align-items: center; gap: 8px; }
+.pairhead > div.p2 { justify-content: flex-end; }
+.pdot { width: 10px; height: 10px; border-radius: 50%; background: var(--pc); }
+.pair { align-items: stretch; }
+.side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.bigmon {
+  flex: 1; display: flex; align-items: center; gap: 16px; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px;
+  box-shadow: var(--shadow); border-left: 4px solid var(--pc);
+}
+.side.p2 .bigmon { flex-direction: row-reverse; text-align: right; border-left: 1px solid var(--border); border-right: 4px solid var(--pc); }
+.stage {
+  position: relative; flex: none; width: clamp(110px, 13vw, 168px); aspect-ratio: 1; border-radius: 14px;
+  display: grid; place-items: center; overflow: hidden; background: var(--surface-2);
+  background: radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--pc) 26%, transparent) 0%, transparent 68%), var(--surface-2);
+}
+.stage::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 12%; height: 9%; border-radius: 50%; background: rgba(0, 0, 0, .14); filter: blur(3px); }
+.stage .sprite { position: relative; z-index: 1; transition: transform .25s ease; }
+.stage .sprite.game { transform: scale(1.3); }   /* game sprites have a wide empty border */
+.bigmon:hover .stage .sprite { transform: translateY(-4px) scale(1.04); }
+.bigmon:hover .stage .sprite.game { transform: translateY(-5px) scale(1.36); }
+.stage .lv { position: absolute; z-index: 2; bottom: 6px; left: 6px; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 8px; background: var(--surface); color: var(--text); opacity: .92; }
+.stage .shiny { position: absolute; z-index: 2; top: 5px; right: 7px; font-size: 18px; }
+.stage .q { font-size: 44px; font-weight: 800; color: var(--muted); opacity: .5; }
+.bigmon .meta { min-width: 0; flex: 1; }
+.bigmon .name { font-weight: 800; font-size: 19px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bigmon .sub { font-size: 13px; color: var(--muted); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bigmon .hpbar { height: 8px; }
+.side.p2 .bigmon .hptext { text-align: left; }
+.chip { display: inline-block; margin-top: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--surface-2); }
+.chip.bad { color: var(--red); }
+.chip.warn { color: var(--yellow); }
+.bigmon.away { opacity: .72; border-style: dashed; }
+.bigmon.dead { background: var(--dead-bg); }
+.bigmon.dead .stage .sprite { filter: grayscale(1); opacity: .6; }
+.bigmon.ghost { border-style: dashed; box-shadow: none; background: transparent; }
+.side.multi .stage { width: clamp(84px, 9vw, 116px); }
+.side.multi .bigmon .name { font-size: 16px; }
+.linkmid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; }
+.linkmid .ring { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; background: var(--accent-soft); color: var(--accent); border: 2px solid var(--accent); }
+.linkmid .route { font-size: 11px; font-weight: 600; color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }
+.pair.dead .linkmid .ring { background: var(--dead-bg); color: var(--red); border-color: var(--red); }
+@media (prefers-reduced-motion: reduce) {
+  .stage .sprite { transition: none; }
+  .bigmon:hover .stage .sprite { transform: none; }
+  .bigmon:hover .stage .sprite.game { transform: scale(1.3); }
+}
 
 .hpbar { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 4px; }
 .hpfill { height: 100%; transition: width .8s ease; }
@@ -146,4 +204,14 @@ tr.st-dead td { background: var(--dead-bg); }
 @media (max-width: 760px) {
   .players, .teamgrid, .grid2 { grid-template-columns: 1fr; }
   h1 { font-size: 22px; }
+  /* pairs stay side by side, cards stack sprite above text */
+  .pairhead, .pair { grid-template-columns: 1fr 44px 1fr; gap: 6px; }
+  .pairhead > div { font-size: 14px; }
+  .bigmon, .side.p2 .bigmon { flex-direction: column; text-align: center; gap: 8px; padding: 8px; }
+  .stage, .side.multi .stage { width: 100%; max-width: 150px; }
+  .bigmon .name { font-size: 15px; }
+  .side.p2 .bigmon .hptext, .bigmon .hptext { text-align: center; }
+  .bigmon .meta { width: 100%; }
+  .linkmid .ring { width: 32px; height: 32px; font-size: 14px; }
+  .linkmid .route { font-size: 10px; }
 }

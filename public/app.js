@@ -17,6 +17,7 @@ let connState = "connecting";
 let key = room ? storage.get(`soullink-key-${room}`) : null;
 let myPlayer = room ? storage.get(`soullink-player-${room}`) : null;
 let renderPending = false;
+let teamMode = storage.get("soullink-teammode") || "pairs";
 
 const PLAYERS = ["1", "2"];
 const STATUS_LABEL = { alive: "lebt", dead: "tot", open: "offen", failed: "gescheitert" };
@@ -240,6 +241,86 @@ function monCard(v, p, mon) {
 }
 
 function teamsTab(v) {
+  const toggle = `<div class="seg" role="group" aria-label="Ansicht">
+    <button class="${teamMode === "pairs" ? "active" : ""}" data-teammode="pairs">⛓ Paare</button>
+    <button class="${teamMode === "teams" ? "active" : ""}" data-teammode="teams">Teams</button></div>`;
+  return toggle + (teamMode === "pairs" ? pairsView(v) : teamColumns(v));
+}
+
+//----------------------------------------------------------------------------
+// Pair view: every party Pokémon next to its linked partner, big sprites
+//----------------------------------------------------------------------------
+const tagsOf = (m) => [m.id, ...(m.fusedWith || [])];
+
+function pairsView(v) {
+  const shown = { 1: new Set(), 2: new Set() };
+  const rows = [];
+  for (const p of PLAYERS) {
+    const op = p === "1" ? "2" : "1";
+    for (const id of v.players[p].party) {
+      const mon = v.mons[p][id];
+      if (!mon || shown[p].has(id)) continue;
+      tagsOf(mon).forEach((t) => shown[p].add(t));
+      const links = [];
+      const partners = [];
+      for (const t of tagsOf(mon)) {
+        const tm = v.mons[p][t];
+        if (!tm) continue;
+        const pm = tm.partner ? v.mons[op][tm.partner] : null;
+        links.push({ route: tm.route, status: tm.linkStatus, extra: tm.extra });
+        if (pm && !partners.some((x) => tagsOf(x).includes(pm.id))) {
+          partners.push(pm);
+          tagsOf(pm).forEach((x) => shown[op].add(x));
+        }
+      }
+      const reason = links.some((l) => l.status === "failed") ? "Begegnung gescheitert"
+        : links.every((l) => l.extra) ? "kein Link (Zusatz)" : "wartet auf Partner";
+      const sides = { [p]: [mon], [op]: partners };
+      rows.push({ sides, links, reason, owner: p });
+    }
+  }
+  if (!rows.length) return `<div class="panel empty">Noch keine Teams. Spiel mit Mod starten und start.bat laufen lassen.</div>`;
+
+  const head = `<div class="pairhead">${PLAYERS.map((p) =>
+    `<div class="p${p}"><span class="pdot"></span>${esc(playerName(v, p))}</div>`).join(`<div></div>`)}</div>`;
+  return `<div class="pairs">${head}${rows.map((r) => pairRow(v, r)).join("")}</div>`;
+}
+
+function pairRow(v, row) {
+  const dead = row.links.some((l) => l.status === "dead");
+  const side = (p) => {
+    const list = row.sides[p];
+    if (!list.length) return `<div class="side p${p}"><div class="bigmon ghost"><div class="stage"><span class="q">?</span></div>
+      <div class="meta"><div class="sub">${esc(row.reason)}</div></div></div></div>`;
+    return `<div class="side p${p} ${list.length > 1 ? "multi" : ""}">${list.map((m) => bigCard(v, p, m, p !== row.owner)).join("")}</div>`;
+  };
+  const routes = [...new Set(row.links.map((l) => l.route))];
+  return `<div class="pair ${dead ? "dead" : ""}">
+    ${side("1")}
+    <div class="linkmid"><span class="ring">${dead ? "☠" : "⛓"}</span>${routes.map((r) => `<span class="route">${esc(r)}</span>`).join("")}</div>
+    ${side("2")}
+  </div>`;
+}
+
+function bigCard(v, p, mon, isPartner) {
+  let note = "";
+  if (mon.dead) note = `<span class="chip bad">☠ tot</span>`;
+  else if (mon.linkStatus === "dead") note = `<span class="chip bad">muss weg (Partner tot)</span>`;
+  else if (isPartner && !mon.inParty) note = `<span class="chip warn">⚠ ${esc(locationLabel(mon))}</span>`;
+  const away = isPartner && !mon.inParty && !mon.dead;
+  return `<div class="bigmon ${mon.dead ? "dead" : ""} ${away ? "away" : ""}">
+    <div class="stage">${spriteHtml(mon, "xl")}
+      ${mon.shiny ? `<span class="shiny" title="Shiny">✨</span>` : ""}
+      <span class="lv">Lv. ${mon.level}</span></div>
+    <div class="meta">
+      <div class="name">${esc(monName(mon))}</div>
+      <div class="sub">${esc(speciesLabel(mon))}</div>
+      ${mon.dead ? "" : hpBar(mon)}
+      ${note}
+    </div></div>`;
+}
+
+function teamColumns(v) {
   return `<div class="teamgrid">${PLAYERS.map((p) => {
     const party = v.players[p].party.map((id) => v.mons[p][id]).filter(Boolean);
     return `<div class="panel p${p}"><h2 style="color:var(--pc)">Team ${esc(playerName(v, p))}</h2>
@@ -368,6 +449,11 @@ function bind() {
   app.querySelectorAll("[data-tab]").forEach((b) => (b.onclick = () => {
     tab = b.dataset.tab;
     storage.set("soullink-tab", tab);
+    render();
+  }));
+  app.querySelectorAll("[data-teammode]").forEach((b) => (b.onclick = () => {
+    teamMode = b.dataset.teammode;
+    storage.set("soullink-teammode", teamMode);
     render();
   }));
   app.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => copy(b.dataset.copy)));
