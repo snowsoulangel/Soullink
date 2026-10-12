@@ -18,9 +18,25 @@ export function spriteUrl(symbol, shiny = false) {
   return `https://play.pokemonshowdown.com/sprites/${shiny ? "gen5-shiny" : "gen5"}/${spriteId(symbol)}.png`;
 }
 
-// One image for normal Pokémon, head + body for fusions.
+// The sprite exported from the game (exactly what the player sees), if any.
+export function gameSpriteUrl(mon) {
+  const room = params.get("room");
+  if (!mon || !mon.sprite || !room) return null;
+  return `/api/rooms/${encodeURIComponent(room)}/sprite?key=${encodeURIComponent(mon.sprite)}`;
+}
+
+// Game sprite if available; otherwise Showdown sprites (head + body for fusions).
 export function spriteHtml(mon, cls = "") {
   if (!mon) return `<div class="sprite ${cls} empty"></div>`;
+  const fallback = showdownSpriteHtml(mon, cls);
+  const own = gameSpriteUrl(mon);
+  if (!own) return fallback;
+  const title = mon.fusion && mon.head && mon.body ? ` title="Kopf: ${esc(mon.head.name)} / Körper: ${esc(mon.body.name)}"` : "";
+  // on error the Showdown version replaces this element
+  return `<div class="sprite game ${cls}"${title}><img src="${esc(own)}" alt="" loading="lazy" data-fallback="${esc(fallback)}" onerror="this.parentNode.outerHTML=this.dataset.fallback"></div>`;
+}
+
+function showdownSpriteHtml(mon, cls) {
   const img = (sym, extra = "") =>
     `<img src="${spriteUrl(sym, mon.shiny)}" alt="" loading="lazy" class="${extra}" onerror="if(this.dataset.f){this.style.visibility='hidden'}else{this.dataset.f=1;this.src='${spriteUrl(sym, false)}'}">`;
   if (mon.fusion && mon.head && mon.body) {

@@ -8,7 +8,7 @@ NB_POKEMON = 501
 DEX = { 1 => :BULBASAUR, 19 => :RATTATA, 25 => :PIKACHU, 16 => :PIDGEY, 29 => :NIDORANfE }
 
 module Settings
-  GAME_VERSION = "6.7.0"
+  GAME_VERSION_NUMBER = "6.8.2"
 end
 
 module GameData
@@ -33,8 +33,47 @@ def get_head_number_from_symbol(id) = id.to_s.match(/(?<=H)\d+/)[0].to_i
 def get_body_number_from_symbol(id) = id.to_s.match(/\d+/)[0].to_i
 def pbGetMapNameFromId(id) = { 1 => "Pallet Town", 2 => "Route 1", 3 => "Viridian Forest" }[id] || ""
 
+# Simplified sprite system of the game (PIFSprite + per-species substitutions).
+PIFSprite = Struct.new(:type, :head_id, :body_id, :alt_letter, :local_path)
+
+class PokemonSystem
+  attr_accessor :random_sprites, :alt_sprite_substitutions
+  def initialize = (@random_sprites = false; @alt_sprite_substitutions = {})
+end
+
+def get_sprite_substitution_id_from_dex_number(species) = GameData::Species.get(species).id_number
+
+class FakeBitmap
+  def initialize(label) = (@label = label)
+  def to_file(path) = File.binwrite(path, "\x89PNG#{@label}")
+end
+
+class FakeAnimatedBitmap
+  attr_reader :bitmap, :disposed
+  def initialize(label) = (@bitmap = FakeBitmap.new(label))
+  def dispose = (@disposed = true)
+end
+
+module GameData
+  class Species
+    class << self
+      attr_accessor :drawn
+    end
+    # Like the game: drawing picks (and remembers) a sprite if none was chosen yet.
+    def self.sprite_bitmap_from_pokemon(pkmn)
+      (self.drawn ||= []) << pkmn.species
+      id = get_sprite_substitution_id_from_dex_number(pkmn.species)
+      s = ($PokemonSystem.alt_sprite_substitutions[id] ||= PIFSprite.new(:BASE, id, nil, "", nil))
+      FakeAnimatedBitmap.new("#{s.head_id}#{s.alt_letter}#{pkmn.shiny? ? 'shiny' : ''}")
+    end
+  end
+end
+
 class Pokemon
   attr_accessor :species, :name, :level, :hp, :totalhp, :obtain_map, :obtain_method, :obtain_text, :personalID, :status
+  attr_accessor :pif_sprite, :shiny, :body_shiny, :head_shiny
+  def isTripleFusion? = false
+  def sprite_scale = 1
   def initialize(species, map, level = 5)
     @species = species
     @obtain_map = map
@@ -49,7 +88,7 @@ class Pokemon
   def speciesName = GameData::Species.get(@species).name
   def nicknamed? = !@name.nil?
   def name = @name || speciesName
-  def shiny? = false
+  def shiny? = !!@shiny
   def gender = 0
 end
 
@@ -90,7 +129,7 @@ module Graphics
 end
 
 # Simplified version of the game's pbFuse: the first Pokémon becomes the fusion.
-def pbFuse(pokemon_body, pokemon_head, _item)
+def pbFuse(pokemon_body, pokemon_head, _item, _fusion_pif_sprite = nil)
   body = GameData::Species.get(pokemon_body.species).id_number
   head = GameData::Species.get(pokemon_head.species).id_number
   pokemon_body.species = GameData::Species.get(body * NB_POKEMON + head).id
@@ -112,6 +151,11 @@ class ModTest < Minitest::Test
     $PokemonStorage = Storage.new
     $game_temp = GameTemp.new
     $game_map = GameMap.new
+    $PokemonSystem = PokemonSystem.new
+    GameData::Species.drawn = []
+    SoulLinkTracker.instance_variable_set(:@sprite_files, {})
+    SoulLinkTracker.instance_variable_set(:@sprite_failed, {})
+    SoulLinkTracker.instance_variable_set(:@sprites_off, false)
     SoulLinkTracker.instance_variable_set(:@next_party, 0)
     SoulLinkTracker.instance_variable_set(:@next_full, 0)
     SoulLinkTracker.instance_variable_set(:@last_trainer, nil)
@@ -161,7 +205,7 @@ class ModTest < Minitest::Test
     $Trainer.party.push(body, head)
     before = tick["party"].map { |m| m["tags"][0]["id"] }
 
-    pbFuse(body, head, :DNASPLICERS)
+    pbFuse(body, head, :DNASPLICERS, nil)   # 6.8+ passes the chosen sprite as 4th argument
     $Trainer.party.delete(head)
     state = tick
     assert_equal 1, state["party"].length
@@ -194,6 +238,40 @@ class ModTest < Minitest::Test
     state = tick
     assert_equal "Ni\\do\n♀", state["party"][0]["name"]
     assert_equal "NIDORANfE", state["party"][0]["species"]
+  end
+
+  def test_exports_the_sprite_the_game_shows_once_per_variant
+    $Trainer.party << Pokemon.new(:PIKACHU, 3)
+    $Trainer.party << Pokemon.new(:PIKACHU, 2)
+    state = tick
+    key = state["party"][0]["sprite"]
+    assert_equal "BASE-25", key
+    assert_equal key, state["party"][1]["sprite"]
+    assert_equal "\x89PNG25".b, File.binread("SoulLink/sprites/#{key}.png")
+    assert_equal [:PIKACHU], GameData::Species.drawn   # same variant drawn only once
+
+    # player picks another alt sprite for Pikachu in the game
+    $PokemonSystem.alt_sprite_substitutions[25] = PIFSprite.new(:BASE, 25, nil, "b", nil)
+    $Trainer.party[0].shiny = true
+    state = tick
+    assert_equal "BASE-25-b-S00", state["party"][0]["sprite"]
+    assert_equal "BASE-25-b", state["party"][1]["sprite"]
+    assert_equal "\x89PNG25bshiny".b, File.binread("SoulLink/sprites/BASE-25-b-S00.png")
+  end
+
+  def test_random_sprites_use_the_pokemons_own_sprite
+    $PokemonSystem.random_sprites = true
+    mon = Pokemon.new(:RATTATA, 2)
+    mon.pif_sprite = PIFSprite.new(:CUSTOM, 19, 25, "c", nil)
+    $Trainer.party << mon
+    assert_equal "CUSTOM-19-25-c", SoulLinkTracker.sprite_key(mon)
+  end
+
+  def test_box_pokemon_without_chosen_sprite_are_not_drawn
+    $PokemonStorage[0][0] = Pokemon.new(:PIDGEY, 2)
+    state = tick
+    assert_empty GameData::Species.drawn
+    assert_nil state["boxes"][0]["sprite"]
   end
 
   def test_no_save_loaded_does_nothing

@@ -7,6 +7,7 @@ Live-Tracking für Soul-Link-Runs zu zweit:
 - **Tode werden automatisch erkannt.** Fällt ein Pokémon auf 0 KP, ist es tot. Der Partner wird markiert, und der Todeszähler zählt hoch.
 - **Run-Seite** mit Teams, allen Links, Friedhof und Ereignis-Log, auch für Zuschauer.
 - **Fusionen:** Ein fusioniertes Pokémon behält beide Links. Nach dem Entfusionieren bekommen beide Teile ihren Link zurück.
+- **Echte Sprites aus dem Spiel:** Overlay und Run-Seite zeigen genau den Sprite, den das Spiel gerade anzeigt, inklusive gewähltem Alt-Sprite und Shiny-Färbung.
 
 ```
  Spieler 1: Infinite Fusion + Mod ──► state.json ──► Hilfsprogramm ──┐
@@ -16,7 +17,7 @@ Live-Tracking für Soul-Link-Runs zu zweit:
                                                                               └──► Run-Seite (live)
 ```
 
-Getestet gegen den Quellcode von **Infinite Fusion 6.7** (Kanto und Hoenn).
+Getestet gegen den Quellcode von **Infinite Fusion 6.7 und 6.8.2** (Kanto und Hoenn).
 
 ---
 
@@ -149,7 +150,7 @@ Auf der Run-Seite unter **Einstellungen** einmal den eigenen `KEY` eintragen. Da
 | Fenster zeigt „Warte auf das Spiel …“ | Ist der Mod-Ordner richtig kopiert (siehe Baum oben)? Ist ein Spielstand geladen? Im Titelbildschirm wird noch nichts geschrieben. |
 | „falscher Schlüssel oder Spieler“ | `config.txt` prüfen. Jeder Spieler braucht seinen eigenen Block, `PLAYER=1` bzw. `PLAYER=2`. |
 | `SoulLink/error.log` existiert | Die Mod hatte einen Fehler. Das Spiel läuft weiter, aber schickt die Datei bitte zur Fehlersuche. |
-| Overlay zeigt keine Bilder | Die Sprites kommen von `play.pokemonshowdown.com`. Fusionen werden als Kopf über Körper dargestellt, nicht mit dem Fusions-Sprite aus dem Spiel. |
+| Overlay zeigt nicht den Sprite aus dem Spiel | Die Mod speichert den Sprite, den das Spiel zeigt (gewählter Alt-Sprite, Custom/Autogen, Shiny), in `SoulLink/sprites`, das Hilfsprogramm lädt ihn hoch. Team-Pokémon kommen außerhalb von Kämpfen nach ein paar Sekunden dran, PC-Pokémon erst, wenn das Spiel ihren Sprite schon einmal geladen hat. Bis dahin zeigt das Overlay Sprites von `play.pokemonshowdown.com` (Fusionen als Kopf über Körper). Hüte von Pokémon werden nicht mit angezeigt. |
 | Spielstand neu angefangen | Run-Seite → Einstellungen → Gefahrenzone → „Spieler X zurücksetzen“, oder einfach einen neuen Run erstellen. |
 
 ### Kostenlos-Limits

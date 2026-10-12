@@ -7,6 +7,10 @@ import { emptyRoom, applySnapshot, applyAction, buildView, PLAYERS } from "./log
 
 const ROOM_RE = /^\/api\/rooms\/([a-z0-9]{6,32})(\/[a-z]+)?$/;
 const MAX_BODY = 4 * 1024 * 1024;
+const SPRITE_KEY_RE = /^[A-Za-z0-9-]{1,80}$/;
+const MAX_SPRITE = 512 * 1024;
+const MAX_SPRITES = 3000;
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47];
 
 export default {
   async fetch(request, env) {
@@ -35,6 +39,8 @@ export class Room extends DurableObject {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec("CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)");
+    // Sprites exported from the game, keyed by sprite variant (shared by both players).
+    this.sql.exec("CREATE TABLE IF NOT EXISTS sprites (k TEXT PRIMARY KEY, png BLOB NOT NULL)");
     this.room = null;
     this.broadcastTimer = null;
   }
@@ -83,6 +89,7 @@ export class Room extends DurableObject {
     const room = this.load();
     if (!room) return json({ error: "Diesen Run gibt es nicht" }, 404);
 
+    // Public reads (no key needed)
     switch (action) {
       case "/state":
         return json(buildView(room, Date.now()));
@@ -95,12 +102,42 @@ export class Room extends DurableObject {
         return new Response(null, { status: 101, webSocket: pair[0] });
       }
 
+      case "/sprites":
+        return json({ keys: this.sql.exec("SELECT k FROM sprites").toArray().map((r) => r.k) });
+
+      case "/sprite": {
+        const key = url.searchParams.get("key") || "";
+        if (!SPRITE_KEY_RE.test(key)) return json({ error: "Ungültiger Sprite" }, 400);
+        if (request.method === "GET") {
+          const row = this.sql.exec("SELECT png FROM sprites WHERE k = ?", key).toArray()[0];
+          if (!row) return json({ error: "Nicht gefunden" }, 404);
+          return new Response(row.png, {
+            headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" },
+          });
+        }
+        break; // POST: upload, handled below
+      }
+    }
+
+    // Writes (player key required)
+    switch (action) {
+      case "/sprite":
       case "/update":
       case "/ping": {
         if (request.method !== "POST") return json({ error: "POST erwartet" }, 405);
         const player = request.headers.get("X-Player");
         if (!PLAYERS.includes(player) || request.headers.get("X-Key") !== room.meta.keys[player]) {
           return json({ error: "Falscher Spieler oder Schlüssel" }, 403);
+        }
+        if (action === "/sprite") {
+          const png = await request.arrayBuffer();
+          const head = new Uint8Array(png, 0, Math.min(4, png.byteLength));
+          if (png.byteLength > MAX_SPRITE) return json({ error: "Zu groß" }, 413);
+          if (!PNG_MAGIC.every((b, i) => head[i] === b)) return json({ error: "Kein PNG" }, 400);
+          const count = this.sql.exec("SELECT COUNT(*) AS n FROM sprites").one().n;
+          if (count >= MAX_SPRITES) return json({ error: "Zu viele Sprites" }, 507);
+          this.sql.exec("INSERT OR REPLACE INTO sprites (k, png) VALUES (?, ?)", url.searchParams.get("key"), png);
+          return json({ ok: true });
         }
         const now = Date.now();
         if (action === "/ping") {

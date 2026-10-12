@@ -84,6 +84,8 @@ export function applySnapshot(room, player, snap, now) {
         fusion: !!m.fusion,
         head: m.head || null,
         body: m.body || null,
+        // exported game sprite; keep the last one while a new variant is not exported yet
+        sprite: typeof m.sprite === "string" ? m.sprite : prev.fusion === !!m.fusion && prev.species === m.species ? e.sprite || null : null,
         fusedWith: ids.filter((x) => x !== id),
         loc: { box: m.box, slot: m.slot, boxName: m.box_name || null },
         present: true,
@@ -214,6 +216,7 @@ function monView(room, player, e) {
     fusion: e.fusion,
     head: e.head,
     body: e.body,
+    sprite: e.sprite || null,
     fusedWith: e.fusedWith || [],
     route: e.route,
     routeKey: e.routeKey,

@@ -49,6 +49,40 @@ Write-Host "  Run-Seite: $server/?room=$($cfg['ROOM'])"
 Write-Host '  Fenster offen lassen, solange ihr spielt. Beenden mit Strg+C.'
 Write-Host ''
 
+$spriteDir = Join-Path $root 'sprites'
+$uploaded = @{}
+$spritesChecked = $false
+$spriteWarned = $false
+
+# Laedt neue Sprite-Bilder (von der Mod in SoulLink\sprites gespeichert) hoch.
+# Fehler hier halten das Senden des Spielstands nicht auf.
+function Send-Sprites {
+    try { Send-SpritesCore } catch {
+        if (-not $script:spriteWarned) {
+            Write-Status "Sprites konnten nicht hochgeladen werden: $($_.Exception.Message)" 'Yellow'
+            $script:spriteWarned = $true
+        }
+    }
+}
+
+function Send-SpritesCore {
+    if (-not (Test-Path $spriteDir)) { return }
+    if (-not $script:spritesChecked) {
+        $known = Invoke-RestMethod -Uri "$base/sprites" -Method Get -TimeoutSec 20
+        foreach ($k in @($known.keys)) { $script:uploaded[$k] = $true }
+        $script:spritesChecked = $true
+    }
+    foreach ($file in Get-ChildItem $spriteDir -Filter '*.png') {
+        $key = $file.BaseName
+        if ($key -notmatch '^[A-Za-z0-9-]{1,80}$' -or $script:uploaded[$key]) { continue }
+        $bytes = [IO.File]::ReadAllBytes($file.FullName)
+        Invoke-RestMethod -Uri "$base/sprite?key=$key" -Method Post -Headers $headers -Body $bytes `
+            -ContentType 'image/png' -TimeoutSec 20 | Out-Null
+        $script:uploaded[$key] = $true
+        Write-Status "Sprite hochgeladen: $key" 'DarkGray'
+    }
+}
+
 $lastSent = $null
 $lastWrite = [DateTime]::MinValue
 $lastPing = [DateTime]::MinValue
@@ -70,6 +104,7 @@ while ($true) {
             if ($info.LastWriteTimeUtc -ne $lastWrite) {
                 $text = [IO.File]::ReadAllText($statePath, [Text.Encoding]::UTF8)
                 if ($text -ne $lastSent) {
+                    Send-Sprites
                     $body = [Text.Encoding]::UTF8.GetBytes($text)
                     Invoke-RestMethod -Uri "$base/update" -Method Post -Headers $headers -Body $body `
                         -ContentType 'application/json; charset=utf-8' -TimeoutSec 20 | Out-Null

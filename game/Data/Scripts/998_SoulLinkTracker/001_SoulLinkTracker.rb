@@ -10,13 +10,16 @@
 # so links survive fusing, unfusing and evolving.
 #==============================================================================
 module SoulLinkTracker
-  VERSION        = "1.0.0"
+  VERSION        = "1.1.0"
   OUTPUT_DIR     = "SoulLink"
   OUTPUT_FILE    = "SoulLink/state.json"
   TEMP_FILE      = "SoulLink/state.json.tmp"
   ERROR_FILE     = "SoulLink/error.log"
+  SPRITE_DIR     = "SoulLink/sprites"
+  SPRITE_TEMP    = "SoulLink/sprites/_tmp.png"
   PARTY_INTERVAL = 0.5   # seconds between party scans (HP updates)
   FULL_INTERVAL  = 4.0   # seconds between full scans (party + PC boxes)
+  SPRITES_PER_SCAN = 3   # max. sprites exported per full scan (each takes a few ms)
 
   @busy         = false
   @next_party   = 0
@@ -25,6 +28,9 @@ module SoulLinkTracker
   @last_json    = nil
   @last_trainer = nil
   @error_logged = false
+  @sprite_files = {}      # sprite keys that already exist as PNG
+  @sprite_failed = {}     # Pokémon whose sprite could not be drawn
+  @sprites_off  = false   # set when this game build cannot save bitmaps
 
   module_function
 
@@ -178,7 +184,102 @@ module SoulLinkTracker
       info = absorbed_of(p)
       info["species"] = fusion_parts(p) if info && fusion?(p)
     end
+    export_sprites(party_list, boxes.map { |b| b[0] })
     @box_entries = boxes.map { |pkmn, box, slot, name| pokemon_entry(pkmn, box, slot, name) }.compact
+  end
+
+  #----------------------------------------------------------------------------
+  # Sprites: the exact picture the game shows for a Pokémon (chosen alt sprite,
+  # custom/autogen, shiny colours, size) is saved once per variant as
+  # SoulLink/sprites/<key>.png. The helper uploads new files to the server.
+  #----------------------------------------------------------------------------
+
+  # The sprite the game would use for this Pokémon, without loading anything.
+  # nil if the game has not picked one yet.
+  def current_pif_sprite(pkmn)
+    if $PokemonSystem && $PokemonSystem.random_sprites
+      return pkmn.pif_sprite
+    end
+    subs = $PokemonSystem && $PokemonSystem.alt_sprite_substitutions
+    return nil if !subs
+    return subs[get_sprite_substitution_id_from_dex_number(pkmn.species)]
+  rescue Exception
+    return nil
+  end
+
+  def sprite_key(pkmn)
+    return nil if !pkmn || pkmn.egg?
+    if (pkmn.isTripleFusion? rescue false)
+      base = "TRIPLE-#{pkmn.species}"
+    else
+      s = current_pif_sprite(pkmn)
+      return nil if !s
+      base = [s.type, s.head_id, s.body_id, s.alt_letter, s.local_path ? "L" : ""].join("-")
+    end
+    if pkmn.shiny?
+      base += "-S#{pkmn.body_shiny ? 1 : 0}#{pkmn.head_shiny ? 1 : 0}"
+    end
+    scale = (pkmn.sprite_scale rescue 1) || 1
+    base += "-X#{scale}" if scale != 1
+    return base.gsub(/[^A-Za-z0-9]+/, "-").gsub(/\A-|-\z/, "")[0, 80]
+  end
+
+  def sprite_path(key)
+    return "#{SPRITE_DIR}/#{key}.png"
+  end
+
+  def sprite_exists?(key)
+    return false if !key
+    return true if @sprite_files[key]
+    @sprite_files[key] = true if File.exist?(sprite_path(key))
+    return @sprite_files[key] ? true : false
+  end
+
+  # Party Pokémon are always drawn (the game shows them anyway). Box Pokémon
+  # only once the game has picked their sprite, so this never makes the game
+  # download spritesheets for Pokémon nobody has looked at.
+  def export_sprites(party, boxed)
+    return if @sprites_off
+    budget = SPRITES_PER_SCAN
+    (party.map { |p| [p, true] } + boxed.map { |p| [p, false] }).each do |pkmn, in_party|
+      break if budget <= 0
+      next if !pkmn || pkmn.egg?
+      key = sprite_key(pkmn)
+      next if key.nil? && !in_party
+      next if sprite_exists?(key)
+      budget -= 1
+      export_sprite(pkmn)
+      return if @sprites_off
+    end
+  end
+
+  def export_sprite(pkmn)
+    failed_id = [pkmn.personalID, pkmn.species, pkmn.shiny?]
+    return if @sprite_failed[failed_id]
+    bmp = GameData::Species.sprite_bitmap_from_pokemon(pkmn)
+    return if !bmp
+    begin
+      if !bmp.bitmap.respond_to?(:to_file)
+        @sprites_off = true   # this build cannot save bitmaps: keep tracking without sprites
+        return
+      end
+      key = sprite_key(pkmn)   # drawing may have picked the sprite just now
+      if !key
+        @sprite_failed[failed_id] = true   # game keeps no record of the sprite: nothing to name it by
+        return
+      end
+      return if sprite_exists?(key)
+      Dir.mkdir(OUTPUT_DIR) if !File.directory?(OUTPUT_DIR)
+      Dir.mkdir(SPRITE_DIR) if !File.directory?(SPRITE_DIR)
+      bmp.bitmap.to_file(SPRITE_TEMP)
+      File.rename(SPRITE_TEMP, sprite_path(key))
+      @sprite_files[key] = true
+    ensure
+      bmp.dispose rescue nil
+    end
+  rescue Exception => e
+    @sprite_failed[failed_id] = true if failed_id   # don't retry this Pokémon every scan
+    log_error(e)
   end
 
   def pokemon_entry(pkmn, box, slot, box_name = nil)
@@ -204,6 +305,8 @@ module SoulLinkTracker
       "slot"     => slot
     }
     entry["box_name"] = utf8(box_name) if box_name
+    key = sprite_key(pkmn)
+    entry["sprite"] = key if sprite_exists?(key)
     if entry["fusion"]
       head = GameData::Species.get(get_head_number_from_symbol(pkmn.species)) rescue nil
       body = GameData::Species.get(get_body_number_from_symbol(pkmn.species)) rescue nil
@@ -222,7 +325,7 @@ module SoulLinkTracker
     map_name = ($game_map ? pbGetMapNameFromId($game_map.map_id) : "") rescue ""
     return {
       "mod_version"  => VERSION,
-      "game_version" => (Settings::GAME_VERSION rescue "?"),
+      "game_version" => (Settings::GAME_VERSION_NUMBER rescue "?"),
       "trainer" => {
         "name"   => utf8($Trainer.name),
         "badges" => ($Trainer.badge_count rescue 0),
@@ -307,14 +410,15 @@ end
 #==============================================================================
 alias soullink_original_pbFuse pbFuse
 
-def pbFuse(pokemon_body, pokemon_head, splicer_item)
+# Extra arguments (6.8+: fusion_pif_sprite) are passed through unchanged.
+def pbFuse(pokemon_body, pokemon_head, *args)
   info = nil
   begin
     info = SoulLinkTracker.on_fuse(pokemon_body, pokemon_head)
   rescue Exception => e
     SoulLinkTracker.log_error(e)
   end
-  ret = soullink_original_pbFuse(pokemon_body, pokemon_head, splicer_item)
+  ret = soullink_original_pbFuse(pokemon_body, pokemon_head, *args)
   begin
     SoulLinkTracker.after_fuse(pokemon_body, info) if ret && info
   rescue Exception => e
